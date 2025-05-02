@@ -1,0 +1,105 @@
+$id: https://wballiance.com/passpoint-schema.json
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+passpoint-properties:
+  home-friendly-name:
+    type: string
+    description: The friendly name of the home SP
+  home-ois:
+    type: array
+    items:
+      type: object
+      properties:
+        home-oi:
+          type: string,
+          pattern: ^[0-9a-f]{6}[[0-9a-f]{4}]?$
+          description: >
+            Organizational Identifier (OI) identifying the home SP
+        required:
+          type: boolean
+          description: >
+            Whether the Organizational Identifier (OI) required to be advertised
+            by an AP for the credential to be considered matching
+  roaming-consortiums:
+    type: array
+    items:
+      type: string,
+      pattern: ^[0-9a-f]{6}[[0-9a-f]{4}]?$
+      description: >
+        Organizational Identifier (OI) identifying the roaming
+        consortiums of which the provider of the credential is
+        a member. The array is sorted from the most preferred
+        one to the least preferred one
+  home-domain:
+    type: string
+    pattern: ^(([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]{2})([-A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF])*([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))\\.)+([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))$
+    description: >
+      an FQDN that is compared against the Domain Name List
+      advertised by an AP used to indicate that the AP is
+      operated by the Home SP
+      (AI generated regex needs checking)
+  other-home-partner-fqdns:
+    type: array
+    items:
+      type: string
+      pattern: ^(([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]{2})([-A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF])*([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))\\.)+([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))$
+      description: >
+        FQDN of a partner operator of the home SP that the
+        mobile device shall regard as a home operator
+        (AI generated regex needs checking)
+  preferred-roaming-partners:
+    type: array
+    items:
+      type: object
+      properties:
+        fqdn:
+          type: string
+          pattern: ^(([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]{2})([-A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF])*([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))\\.)+([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))$
+          description: >
+            The FQDN of an AAA provider in the roaming partner list
+        match:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: 0 exact match, 1 include subdomains
+        priority:
+          type: number
+          minimum: 0
+          maximum: 255
+          description: The lower the priority, the more preferred the partner
+        country:
+          type: string
+          pattern: ^[a-zA-Z]{2}$
+          description: ISO 3166 two letter country code
+  credential-priority:
+    type: number
+    minimum: 0
+    maximum: 255
+    description: >
+      value of priority key corresponds to the priority of the credential.
+      The lower the priority, the more preferred the credential
+  aaa-server-check:
+    type: number
+    minimum: 0
+    maximum: 2
+    description: >
+      0 do not use OCSP stapling.
+      1 try to use OCSP stapling.
+      2 require valid OCSP stapling response.
+  realm:
+    type: string
+    pattern: ^(([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]{2})([-A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF])*([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))\\.)+([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]))$
+    description: The realm associated with the credential
+  eap-method:
+    type: number
+    minimum: 0
+    maximum: 4294967295
+    description: >
+      an EAP method type as defined by IANA
+      https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml
+  username:
+    type: string
+    pattern: ^(?![.-])([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF]|[.-])*([A-Za-z0-9]|[\u00C2-\u00DF][\u0080-\u00BF]|\u00E0[\u00A0-\u00BF][\u0080-\u00BF]|[\u00E1-\u00EC][\u0080-\u00BF]{2}|\u00ED[\u0080-\u009F][\u0080-\u00BF]|[\u00EE-\u00EF][\u0080-\u00BF]{2}|\u00F0[\u0090-\u00BF][\u0080-\u00BF]{2}|[\u00F1-\u00F3][\u0080-\u00BF]{3}|\u00F4[\u0080-\u008F][\u0080-\u00BF])$
+    description: >
+        the username to be used with the credential
+        (AI generated regex needs checking)
