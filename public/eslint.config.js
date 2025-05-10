@@ -2,9 +2,14 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import json from 'eslint-plugin-json'
 
 export default [
+  { ignores: ['**/*.md', 'README.md'] },
+  
   { ignores: ['dist'] },
+
+  // JavaScript and JSX Files
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
@@ -28,6 +33,17 @@ export default [
         'warn',
         { allowConstantExport: true },
       ],
+    },
+  },
+
+  // JSON Files
+  {
+    files: ['**/*.json'],
+    plugins: {
+      json,
+    },
+    rules: {
+      'json/*': ['error', { allowComments: true }],
     },
   },
 ]
