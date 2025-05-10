@@ -1,14 +1,15 @@
-# YAML to JSON Converter Service
+# Passpoint Config Editor
 
-A Node.js service that converts YAML files to JSON with a web interface for visualization.
+A Node.js service that provides a web interface for creating and editing Passpoint configurations, with YAML/JSON conversion capabilities.
 
 ## Features
 
-- YAML to JSON conversion
-- Web interface for easy interaction
-- Pretty-printed JSON output
-- Support for WBA Passpoint Profile Provisioning certificate attributes
+- Interactive web-based Passpoint configuration editor
+- Form-based editing with specialized UI for complex fields
+- YAML and JSON import/export
 - JSON Schema validation
+- Support for WBA Passpoint Profile Provisioning attributes
+- Specialized UI components for Home OIs and Roaming Consortiums
 - UTF-8 character support
 
 ## Setup
@@ -21,28 +22,40 @@ cd yaml-json-service
 
 2. Install dependencies:
 ```bash
+# Install backend dependencies
 npm install
+
+# Install frontend dependencies
+cd public
+npm install
+cd ..
 ```
 
-3. Update server configuration:
-Edit `src/app.js` and update the CORS origins to match your hostname:
-```javascript
-app.use(cors({
-  origin: ['http://localhost:6001', 'http://YOUR-HOSTNAME:6001'],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
-```
+## Running the Application
 
-4. Start the server:
+### Start the Backend Server
+
 ```bash
+# From the project root directory
 npm run dev
 ```
 
-5. Access the web interface:
+This will start the backend server on port 6001.
+
+### Start the Frontend Development Server
+
+```bash
+# From the project root directory
+cd public
+npm run dev
 ```
-http://localhost:6001
-```
+
+This will start the Vite development server, typically on port 5173.
+
+### Access the Application
+
+- Frontend UI: http://localhost:5173
+- Backend API: http://localhost:6001
 
 ## API Usage
 
@@ -61,25 +74,77 @@ curl -X POST http://localhost:6001/api/convert \
 ## Project Structure
 ```
 yaml-json-service/
-├── src/
-│   ├── config/
+├── src/                         # Backend code
+│   ├── config/                  # YAML schema files
 │   │   ├── sample.yml
-│   │   └── passpoint_rev0.yml    # JSON Schema for Passpoint attributes
+│   │   └── passpoint_rev0.yml   # JSON Schema for Passpoint attributes
 │   ├── routes/
 │   │   └── yaml.routes.js
 │   ├── services/
 │   │   └── yaml.service.js
 │   └── app.js
-├── public/
+├── public/                      # Frontend code
+│   ├── src/
+│   │   ├── App.jsx              # Main React component
+│   │   └── ...
 │   ├── index.html
-│   ├── style.css
-│   └── script.js
+│   ├── package.json
+│   └── vite.config.js
 └── package.json
+```
+
+## Configuration
+
+### Backend Configuration
+
+Edit `src/app.js` to update the CORS origins to match your hostname:
+```javascript
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:6001', 'http://YOUR-HOSTNAME:6001'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
+```
+
+### Frontend Configuration
+
+If your backend is running on a different host or port, update the API URL in the frontend code.
+
+## Development
+
+### Building for Production
+
+```bash
+# Build the frontend
+cd public
+npm run build
+
+# Copy frontend build to backend public directory (if needed)
+cp -r dist/* ../public/
+
+# Start the production server
+cd ..
+npm start
 ```
 
 ## Important Note
 
 The default server configuration uses `sandbox-mac-mini` as the hostname. You'll need to update this in `src/app.js` to match your system's hostname or use `localhost` for local development.
+
+## Version History
+
+### v0.2
+- Added specialized UI components for Home OIs and Roaming Consortiums
+- Added JSON export functionality
+- Added YAML export with schema preservation
+- Added "View JSON Only" feature
+- Improved UI layout and styling
+- Fixed button rendering issues
+
+### v0.1
+- Initial release with basic YAML to JSON conversion
+- Web interface for visualization
+- JSON Schema validation
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for more details.
