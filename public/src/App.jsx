@@ -231,6 +231,17 @@ function App() {
     
     fetchSchema();
   }, []);
+
+  // Add an effect to set the body background color
+  useEffect(() => {
+    // Set the body background color
+    document.body.style.backgroundColor = '#F5F5F5';
+    
+    // Clean up function to reset the body background when component unmounts
+    return () => {
+      document.body.style.backgroundColor = '';
+    };
+  }, []);
   
   // Handle form field changes
   const handleChange = (field) => (event) => {
@@ -767,26 +778,23 @@ function App() {
   };
 
   return (
-    <Box sx={{ 
+    <div style={{ 
+      backgroundColor: '#f5f5f5',
       minHeight: '100vh',
-      display: 'flex', 
+      display: 'flex',
       justifyContent: 'center',
-      bgcolor: '#f5f5f5',
-      padding: 0
+      alignItems: 'flex-start',
+      padding: '2rem'
     }}>
-      <Container 
-        maxWidth="md"
-        sx={{ 
-          mt: 4,
-          mb: 4,
-          bgcolor: '#ffffff',  
-          p: 4,             
-          borderRadius: 2,  
-          boxShadow: 1,
-          minHeight: '80vh',
-          width: '100%'
-        }}
-      >
+      <div style={{
+        backgroundColor: 'white',
+        maxWidth: '900px',
+        width: '100%',
+        padding: '2rem',
+        borderRadius: '8px',
+        boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
+        margin: '0 auto'
+      }}>
         <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
           Passpoint Config Editor
         </Typography>
@@ -826,8 +834,8 @@ function App() {
             </Box>
           </>
         )}
-      </Container>
-    </Box>
+      </div>
+    </div>
   );
 }
 
