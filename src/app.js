@@ -10,7 +10,11 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:6001', 'http://sandbox-mac-mini:6001'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
 // Serve static files
@@ -26,7 +30,7 @@ app.use('/api', yamlRoutes);
 
 const PORT = process.env.PORT || 6001;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://sandbox-mac-mini:${PORT}`);
 });
 
 module.exports = app;
