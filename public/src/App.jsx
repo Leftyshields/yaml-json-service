@@ -29,15 +29,22 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import yaml from 'js-yaml';
+import FileUploader from './components/FileUploader';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
   // State for form data
   const [formData, setFormData] = useState({
     "home-friendly-name": "",
-    "home-domain": ""
+    "home-domain": "",
+    "home-ois": [],
+    "roaming-consortiums": [],
+    "other-home-partner-fqdns": [],
+    "preferred-roaming-partners": []
   });
   
-  // State for schema and loading
+  // Separate schema storage
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -206,14 +213,22 @@ function App() {
         console.log('Loaded schema properties:', schemaProperties);
         setSchema(schemaProperties);
         
-        // Initialize form data with empty values for each field
+        // Initialize form data with proper structure
         const initialData = {};
         Object.keys(schemaProperties).forEach(key => {
-          if (schemaProperties[key].type === 'array') {
+          const prop = schemaProperties[key];
+          
+          if (prop.type === 'object' && prop.properties) {
+            // Initialize object with all nested properties
+            initialData[key] = {};
+            Object.keys(prop.properties).forEach(subKey => {
+              initialData[key][subKey] = '';
+            });
+          } else if (prop.type === 'array') {
             initialData[key] = [];
-          } else if (schemaProperties[key].type === 'boolean') {
+          } else if (prop.type === 'boolean') {
             initialData[key] = false;
-          } else if (schemaProperties[key].type === 'number' || schemaProperties[key].type === 'integer') {
+          } else if (prop.type === 'number' || prop.type === 'integer') {
             initialData[key] = 0;
           } else {
             initialData[key] = "";
@@ -251,6 +266,42 @@ function App() {
       ...formData,
       [field]: value
     });
+  };
+
+  // Add these additional state variables to track the original structure
+  const [originalStructure, setOriginalStructure] = useState(null);
+  const [userModifiedValues, setUserModifiedValues] = useState({});
+
+  // Update the handleInputChange function to properly handle nested values
+  const handleInputChange = (fieldPath) => (event) => {
+    const value = event.target.value;
+    console.log(`Updating ${fieldPath} with value: ${value}`);
+    
+    // Create a deep copy of form data
+    const newFormData = JSON.parse(JSON.stringify(formData));
+    
+    // Handle special cases - preserve structure
+    if (originalStructure && originalStructure['passpoint-properties'] && 
+        originalStructure['passpoint-properties'][fieldPath]) {
+      // If this field exists in the schema with a complex structure
+      // Just update the form data for display purposes
+      newFormData[fieldPath] = value;
+      
+      // Track modified value with special path for later export
+      const newModifications = {...userModifiedValues};
+      newModifications[`passpoint-properties.${fieldPath}.value`] = value;
+      setUserModifiedValues(newModifications);
+    } else {
+      // Standard field - update directly
+      newFormData[fieldPath] = value;
+      
+      // Track this field as user-modified
+      const newModifications = {...userModifiedValues};
+      newModifications[fieldPath] = value;
+      setUserModifiedValues(newModifications);
+    }
+    
+    setFormData(newFormData);
   };
 
   // Handle boolean switch changes
@@ -338,6 +389,37 @@ function App() {
       const field = schema[key];
       const fieldType = field.type;
       
+      // Handle nested objects
+      if (fieldType === 'object' && field.properties) {
+        return (
+          <Card key={key} sx={{ mt: 2, mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                {formatFieldLabel(key)}
+              </Typography>
+              
+              {Object.keys(field.properties).map(propKey => {
+                const propField = field.properties[propKey];
+                const fullPath = `${key}.${propKey}`;
+                const value = formData[key]?.[propKey] || '';
+                
+                return (
+                  <TextField
+                    key={fullPath}
+                    label={formatFieldLabel(propKey)}
+                    fullWidth
+                    margin="normal"
+                    value={getNestedValue(formData, fullPath)}
+                    onChange={handleInputChange(fullPath)}
+                    helperText={propField.description}
+                  />
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      }
+      
       // Render different field types
       switch (fieldType) {
         case 'string':
@@ -347,8 +429,8 @@ function App() {
               label={formatFieldLabel(key)}
               fullWidth
               margin="normal"
-              value={formData[key] || ''}
-              onChange={handleChange(key)}
+              value={getFormValue(formData, key)}
+              onChange={handleInputChange(key)}
               helperText={field.description}
             />
           );
@@ -363,7 +445,7 @@ function App() {
               fullWidth
               margin="normal"
               value={formData[key] || 0}
-              onChange={handleChange(key)}
+              onChange={handleInputChange(key)}
               helperText={field.description}
               InputProps={{
                 inputProps: { 
@@ -687,61 +769,215 @@ function App() {
     });
   };
 
-  // Function to generate YAML from the current form data
-  const generateYaml = () => {
+  // Enhanced convertYaml function with better structure extraction
+  const convertYaml = async (filePath) => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      // Create a copy of the original schema
-      const fullConfig = {
-        $id: "https://wballiance.com/passpoint-schema.json",
-        $schema: "https://json-schema.org/draft/2020-12/schema",
-        type: "object",
-        "passpoint-properties": {}
+      const response = await fetch(`http://sandbox-mac-mini:6001/api/convert`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ filePath }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error converting YAML file');
+      }
+      
+      const data = await response.json();
+      console.log('Received converted data:', data);
+      
+      // Store the complete original structure
+      setOriginalStructure(data);
+      
+      // Extract user-editable values for the form
+      const extractedValues = {};
+      
+      // Enhanced extraction that handles both direct values and {value: "..."} format
+      const extractUserValues = (obj, prefix = '') => {
+        if (!obj || typeof obj !== 'object') return;
+        
+        Object.entries(obj).forEach(([key, value]) => {
+          const fullKey = prefix ? `${prefix}.${key}` : key;
+          
+          // Skip schema-related keys
+          if (['$id', '$schema', 'type'].includes(key)) return;
+          
+          // Handle passpoint-properties specially
+          if (key === 'passpoint-properties') {
+            extractUserValues(value, key);
+            return;
+          }
+          
+          if (value && typeof value === 'object') {
+            if (Array.isArray(value)) {
+              extractedValues[key] = [...value]; // Clone array
+            } else if (value.hasOwnProperty('value')) {
+              // Handle the {value: "..."} format
+              extractedValues[key] = value.value;
+            } else {
+              extractUserValues(value, key); // Recurse into objects
+            }
+          } else if (value !== undefined) {
+            extractedValues[key] = value; // Store primitive values
+          }
+        });
       };
       
-      // Add form values to the config
-      Object.keys(formData).forEach(key => {
-        fullConfig["passpoint-properties"][key] = formData[key];
-      });
+      extractUserValues(data);
       
-      // Convert to YAML
-      const yamlOutput = yaml.dump(fullConfig, {
-        indent: 2,
-        lineWidth: -1,
-        noRefs: true
-      });
+      // Initialize arrays if needed
+      if (!extractedValues['home-ois']) extractedValues['home-ois'] = [];
+      if (!extractedValues['roaming-consortiums']) extractedValues['roaming-consortiums'] = [];
+      if (!extractedValues['other-home-partner-fqdns']) extractedValues['other-home-partner-fqdns'] = [];
+      if (!extractedValues['preferred-roaming-partners']) extractedValues['preferred-roaming-partners'] = [];
       
-      // Create a downloadable file
-      const blob = new Blob([yamlOutput], { type: 'text/yaml' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'passpoint-config.yml';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Update form data with extracted values
+      setFormData(extractedValues);
+      setUserModifiedValues({}); // Reset user modifications
+      
+      toast.success('YAML file converted successfully!');
     } catch (err) {
-      console.error('Error generating YAML:', err);
-      alert('Failed to generate YAML file');
+      console.error('Error converting YAML:', err);
+      setError(err.message || 'Failed to convert YAML file');
+      toast.error('Failed to convert YAML file');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Function to generate a JSON file for download
-  const generateJson = () => {
+  // Update or add these export functions
+  const generateYaml = () => {
     try {
-      // Create a downloadable file
-      const blob = new Blob([JSON.stringify(formData, null, 2)], { type: 'application/json' });
+      // Start with the original structure or a blank object if none
+      let exportData = originalStructure ? JSON.parse(JSON.stringify(originalStructure)) : {};
+      
+      // Apply user modifications to the structure based on the path
+      Object.entries(userModifiedValues).forEach(([path, value]) => {
+        // Handle different path structures
+        const parts = path.split('.');
+        
+        // Handle passpoint-properties structure
+        if (parts[0] === 'passpoint-properties') {
+          if (parts.length === 3 && parts[2] === 'value') {
+            // It's a property value in the passpoint-properties.fieldname.value structure
+            const propertyName = parts[1];
+            
+            // Make sure the passpoint-properties object exists
+            if (!exportData['passpoint-properties']) {
+              exportData['passpoint-properties'] = {};
+            }
+            
+            // Make sure the property exists
+            if (!exportData['passpoint-properties'][propertyName]) {
+              exportData['passpoint-properties'][propertyName] = {};
+            }
+            
+            // Set the value while preserving other property attributes
+            exportData['passpoint-properties'][propertyName].value = value;
+          } else if (parts.length === 2) {
+            // Direct property under passpoint-properties
+            if (!exportData['passpoint-properties']) {
+              exportData['passpoint-properties'] = {};
+            }
+            
+            // Check if this property has a complex structure in the original data
+            const propName = parts[1];
+            const origProp = exportData['passpoint-properties'] && 
+                            exportData['passpoint-properties'][propName];
+            
+            if (origProp && typeof origProp === 'object' && !Array.isArray(origProp)) {
+              // Preserve structure but update value
+              exportData['passpoint-properties'][propName].value = value;
+            } else {
+              // Simple direct update
+              exportData['passpoint-properties'][propName] = value;
+            }
+          }
+        }
+        else if (parts.length > 1) {
+          // Handle other nested paths
+          let current = exportData;
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) current[parts[i]] = {};
+            current = current[parts[i]];
+          }
+          
+          // Check if this property had a complex structure before
+          const lastPart = parts[parts.length - 1];
+          const origValue = current[lastPart];
+          
+          if (origValue && typeof origValue === 'object' && origValue.hasOwnProperty('value')) {
+            // Preserve the structure but update the value
+            current[lastPart].value = value;
+          } else {
+            // Simple update
+            current[lastPart] = value;
+          }
+        } 
+        else {
+          // For simple top-level fields, check if they had complex structure
+          const origValue = exportData[path];
+          if (origValue && typeof origValue === 'object' && origValue.hasOwnProperty('value')) {
+            // Preserve the structure but update the value
+            exportData[path].value = value;
+          } else {
+            // Simple update
+            exportData[path] = value;
+          }
+        }
+      });
+      
+      // Also merge any array changes from formData into the structure
+      ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(arrayKey => {
+        if (formData[arrayKey]) {
+          exportData[arrayKey] = [...formData[arrayKey]];
+        }
+      });
+      
+      // Convert to YAML
+      const yamlContent = yaml.dump(exportData);
+      
+      // Create download link
+      const blob = new Blob([yamlContent], { type: 'text/yaml' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'passpoint-config.json';
+      link.download = 'passpoint_config.yml';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Error generating JSON:', err);
-      alert('Failed to generate JSON file');
+      
+      toast.success('YAML file downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating YAML:', error);
+      toast.error('Failed to generate YAML file');
+    }
+  };
+
+  const generateJson = () => {
+    try {
+      // Use current form data directly as it's already in JSON format
+      const jsonContent = JSON.stringify(formData, null, 2);
+      
+      // Create download link
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'updated_config.json';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('JSON file downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating JSON:', error);
+      toast.error('Failed to generate JSON file');
     }
   };
 
@@ -777,6 +1013,17 @@ function App() {
     newWindow.document.close();
   };
 
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFileName, setUploadedFileName] = useState(null);
+
+  // Add handler for uploaded files
+  const handleFileUploaded = (filePath, fileName) => {
+    setUploadedFile(filePath);
+    setUploadedFileName(fileName);
+    // Automatically convert the uploaded file
+    convertYaml(filePath);
+  };
+
   return (
     <div style={{ 
       backgroundColor: '#f5f5f5',
@@ -786,6 +1033,9 @@ function App() {
       alignItems: 'flex-start',
       padding: '2rem'
     }}>
+      {/* Add ToastContainer */}
+      <ToastContainer position="top-right" autoClose={3000} />
+      
       <div style={{
         backgroundColor: 'white',
         maxWidth: '900px',
@@ -798,6 +1048,27 @@ function App() {
         <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
           Passpoint Config Editor
         </Typography>
+        
+        {/* File uploader moved to the top */}
+        <Box sx={{ mb: 3, mt: 2 }}>
+          <FileUploader onFileUploaded={handleFileUploaded} />
+          
+          {uploadedFile && (
+            <Paper sx={{ p: 2, mt: 2, bgcolor: '#f0f7ff', borderLeft: '4px solid #1976d2' }}>
+              <Typography variant="body1">
+                Using uploaded file: <strong>{uploadedFileName}</strong>
+              </Typography>
+              <Button 
+                variant="contained" 
+                size="small"
+                sx={{ mt: 1 }}
+                onClick={() => convertYaml(uploadedFile)}
+              >
+                Convert Uploaded File
+              </Button>
+            </Paper>
+          )}
+        </Box>
         
         {loading ? (
           <CircularProgress />
@@ -814,11 +1085,64 @@ function App() {
                 mt: 4, 
                 p: 2, 
                 whiteSpace: 'pre-wrap', 
-                backgroundColor: '#f6f6f6' 
+                backgroundColor: '#f6f6f6',
+                maxHeight: '300px',
+                overflow: 'auto'
               }}
             >
               <Typography variant="subtitle1">JSON Preview</Typography>
-              <code>{JSON.stringify(formData, null, 2)}</code>
+              <code>{JSON.stringify(
+                // Create a preview that shows how the YAML structure will look
+                (() => {
+                  // Start with the original structure or a blank object
+                  let previewData = originalStructure ? 
+                    JSON.parse(JSON.stringify(originalStructure)) : 
+                    {
+                      "home-ois": [],
+                      "roaming-consortiums": [],
+                      "other-home-partner-fqdns": [],
+                      "preferred-roaming-partners": []
+                    };
+      
+                  // Apply all the user modifications correctly
+                  Object.entries(userModifiedValues).forEach(([path, value]) => {
+                    const parts = path.split('.');
+                    
+                    // If this is a passpoint-properties nested value
+                    if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
+                      const propertyName = parts[1];
+                      
+                      // Ensure path exists
+                      if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
+                      if (!previewData['passpoint-properties'][propertyName]) {
+                        previewData['passpoint-properties'][propertyName] = {};
+                      }
+                      
+                      previewData['passpoint-properties'][propertyName].value = value;
+                    }
+                    else if (parts.length > 1) {
+                      // Handle other nested paths
+                      let current = previewData;
+                      for (let i = 0; i < parts.length - 1; i++) {
+                        if (!current[parts[i]]) current[parts[i]] = {};
+                        current = current[parts[i]];
+                      }
+                      current[parts[parts.length - 1]] = value;
+                    }
+                    else {
+                      // For simple fields
+                      previewData[path] = value;
+                    }
+                  });
+                  
+                  // Add array data
+                  ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(key => {
+                    if (formData[key]) previewData[key] = formData[key];
+                  });
+                  
+                  return previewData;
+                })(),
+                null, 2)}</code>
             </Paper>
 
             <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
@@ -840,3 +1164,44 @@ function App() {
 }
 
 export default App;
+
+// This helper function gets a value at any depth in the object
+const getNestedValue = (obj, path) => {
+  const parts = path.split('.');
+  let value = obj;
+  
+  for (const part of parts) {
+    if (!value) return '';
+    value = value[part];
+  }
+  
+  return value !== undefined ? value : '';
+};
+
+// Add this helper function to ensure consistent form value population
+const getFormValue = (dataObj, fieldPath) => {
+  // Handle cases with nested paths
+  if (fieldPath.includes('.')) {
+    const parts = fieldPath.split('.');
+    let current = dataObj;
+    
+    for (const part of parts) {
+      if (!current) return '';
+      current = current[part];
+      
+      // Check for value property
+      if (current && typeof current === 'object' && current.hasOwnProperty('value')) {
+        return current.value;
+      }
+    }
+    return current !== undefined ? current : '';
+  }
+  
+  // Handle top-level fields that might have value property
+  const field = dataObj[fieldPath];
+  if (field && typeof field === 'object' && field.hasOwnProperty('value')) {
+    return field.value;
+  }
+  
+  return dataObj[fieldPath] !== undefined ? dataObj[fieldPath] : '';
+};

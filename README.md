@@ -6,11 +6,15 @@ A Node.js service that provides a web interface for creating and editing Passpoi
 
 - Interactive web-based Passpoint configuration editor
 - Form-based editing with specialized UI for complex fields
-- YAML and JSON import/export
+- YAML and JSON import/export with structure preservation
 - JSON Schema validation
 - Support for WBA Passpoint Profile Provisioning attributes
 - Specialized UI components for Home OIs and Roaming Consortiums
 - UTF-8 character support
+- Automatic file conversion on upload
+- Preserves original YAML structure when editing values
+- Correctly handles nested object structures and value fields
+- Real-time JSON preview of the current configuration
 
 ## Setup
 
@@ -110,6 +114,30 @@ app.use(cors({
 
 If your backend is running on a different host or port, update the API URL in the frontend code.
 
+## Usage Guide
+
+### Importing and Editing Files
+
+1. Upload a YAML configuration file using the file uploader
+2. The file will be automatically converted and loaded into the form
+3. Edit values in the form as needed
+4. The JSON preview will update in real-time to show the current configuration
+5. Download the updated configuration as YAML or JSON
+
+### Structure Preservation
+
+When editing an existing YAML file:
+- The original structure of the file is preserved
+- Only the specific values you modify are updated
+- Complex structures (like objects with `value` fields) maintain their format
+- Arrays and nested objects are correctly handled
+
+### Special Field Types
+
+- **Home OIs**: Specialized UI for entering and managing Home OIs with validation
+- **Roaming Consortiums**: Dedicated interface for managing roaming consortium entries
+- **Complex Objects**: Properly structured form inputs for nested object properties
+
 ## Development
 
 ### Building for Production
@@ -132,6 +160,14 @@ npm start
 The default server configuration uses `sandbox-mac-mini` as the hostname. You'll need to update this in `src/app.js` to match your system's hostname or use `localhost` for local development.
 
 ## Version History
+
+### v0.3
+- Added structure preservation for YAML edits
+- Implemented proper handling of nested object structures
+- Added support for complex objects with value fields
+- Added real-time JSON preview
+- Automatic file conversion on upload
+- Fixed form field mapping to maintain original structure
 
 ### v0.2
 - Added specialized UI components for Home OIs and Roaming Consortiums
