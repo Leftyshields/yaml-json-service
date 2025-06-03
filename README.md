@@ -15,6 +15,7 @@ A Node.js service that provides a web interface for creating and editing Passpoi
 - Preserves original YAML structure when editing values
 - Correctly handles nested object structures and value fields
 - Real-time JSON preview of the current configuration
+- **NEW: Passpoint Profile Converter tool for importing .mobileconfig and .xml files**
 
 ## Setup
 
@@ -90,6 +91,9 @@ yaml-json-service/
 ├── public/                      # Frontend code
 │   ├── src/
 │   │   ├── App.jsx              # Main React component
+│   │   ├── components/
+│   │   │   ├── FileUploader.jsx
+│   │   │   └── PasspointProfileConverter.jsx  # New converter component
 │   │   └── ...
 │   ├── index.html
 │   ├── package.json
@@ -123,6 +127,15 @@ If your backend is running on a different host or port, update the API URL in th
 3. Edit values in the form as needed
 4. The JSON preview will update in real-time to show the current configuration
 5. Download the updated configuration as YAML or JSON
+
+### Using the Passpoint Profile Converter
+
+1. Navigate to the "Profile Converter" tab
+2. Upload a legacy Passpoint configuration file (.mobileconfig or .xml)
+3. The converter will automatically parse the file and extract Passpoint-related fields
+4. The parsed data will be displayed in YAML format
+5. You can copy the generated YAML or download it as a file
+6. This YAML can then be imported into the main editor for further modification
 
 ### Structure Preservation
 
@@ -160,6 +173,14 @@ npm start
 The default server configuration uses `sandbox-mac-mini` as the hostname. You'll need to update this in `src/app.js` to match your system's hostname or use `localhost` for local development.
 
 ## Version History
+
+### v0.4
+- Added Passpoint Profile Converter for importing legacy configurations
+- Support for .mobileconfig (PLIST) format conversion
+- Support for XML format conversion
+- Automatic mapping of common Passpoint fields
+- Tab navigation between editor and converter
+- Integration with react-router-dom for page navigation
 
 ### v0.3
 - Added structure preservation for YAML edits

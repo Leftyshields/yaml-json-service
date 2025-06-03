@@ -26,12 +26,16 @@ import {
   TableHead,
   TableRow,
   IconButton,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import yaml from 'js-yaml';
 import FileUploader from './components/FileUploader';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import PasspointProfileConverter from './components/PasspointProfileConverter';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 
 function App() {
   // State for form data
@@ -1024,142 +1028,166 @@ function App() {
     convertYaml(filePath);
   };
 
+  // Add state for tab selection
+  const [tabValue, setTabValue] = useState(0);
+  
+  // Handle tab changes
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+  
   return (
-    <div style={{ 
-      backgroundColor: '#f5f5f5',
-      minHeight: '100vh',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'flex-start',
-      padding: '2rem'
-    }}>
-      {/* Add ToastContainer */}
-      <ToastContainer position="top-right" autoClose={3000} />
-      
-      <div style={{
-        backgroundColor: 'white',
-        maxWidth: '900px',
-        width: '100%',
-        padding: '2rem',
-        borderRadius: '8px',
-        boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-        margin: '0 auto'
+    <BrowserRouter>
+      <div style={{ 
+        backgroundColor: '#f5f5f5',
+        minHeight: '100vh'
       }}>
-        <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
-          Passpoint Config Editor
-        </Typography>
+        <ToastContainer position="top-right" autoClose={3000} />
         
-        {/* File uploader moved to the top */}
-        <Box sx={{ mb: 3, mt: 2 }}>
-          <FileUploader onFileUploaded={handleFileUploaded} />
-          
-          {uploadedFile && (
-            <Paper sx={{ p: 2, mt: 2, bgcolor: '#f0f7ff', borderLeft: '4px solid #1976d2' }}>
-              <Typography variant="body1">
-                Using uploaded file: <strong>{uploadedFileName}</strong>
-              </Typography>
-              <Button 
-                variant="contained" 
-                size="small"
-                sx={{ mt: 1 }}
-                onClick={() => convertYaml(uploadedFile)}
-              >
-                Convert Uploaded File
-              </Button>
-            </Paper>
-          )}
+        {/* Add navigation tabs */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            centered
+            sx={{ mt: 2 }}
+          >
+            <Tab label="Passpoint Config Editor" component={Link} to="/" />
+            <Tab label="Profile Converter" component={Link} to="/converter" />
+          </Tabs>
         </Box>
         
-        {loading ? (
-          <CircularProgress />
-        ) : error ? (
-          <Alert severity="error">{error}</Alert>
-        ) : (
-          <>
-            <Box sx={{ mb: 3 }}>
-              {renderFields()}
-            </Box>
+        {/* Add routes */}
+        <Routes>
+          <Route path="/" element={
+            <div style={{
+              backgroundColor: 'white',
+              maxWidth: '900px',
+              width: '100%',
+              padding: '2rem',
+              borderRadius: '8px',
+              boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
+              margin: '2rem auto'
+            }}>
+              <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
+                Passpoint Config Editor
+              </Typography>
+              
+              {/* File uploader moved to the top */}
+              <Box sx={{ mb: 3, mt: 2 }}>
+                <FileUploader onFileUploaded={handleFileUploaded} />
+                
+                {uploadedFile && (
+                  <Paper sx={{ p: 2, mt: 2, bgcolor: '#f0f7ff', borderLeft: '4px solid #1976d2' }}>
+                    <Typography variant="body1">
+                      Using uploaded file: <strong>{uploadedFileName}</strong>
+                    </Typography>
+                    <Button 
+                      variant="contained" 
+                      size="small"
+                      sx={{ mt: 1 }}
+                      onClick={() => convertYaml(uploadedFile)}
+                    >
+                      Convert Uploaded File
+                    </Button>
+                  </Paper>
+                )}
+              </Box>
+              
+              {loading ? (
+                <CircularProgress />
+              ) : error ? (
+                <Alert severity="error">{error}</Alert>
+              ) : (
+                <>
+                  <Box sx={{ mb: 3 }}>
+                    {renderFields()}
+                  </Box>
     
-            <Paper 
-              sx={{ 
-                mt: 4, 
-                p: 2, 
-                whiteSpace: 'pre-wrap', 
-                backgroundColor: '#f6f6f6',
-                maxHeight: '300px',
-                overflow: 'auto'
-              }}
-            >
-              <Typography variant="subtitle1">JSON Preview</Typography>
-              <code>{JSON.stringify(
-                // Create a preview that shows how the YAML structure will look
-                (() => {
-                  // Start with the original structure or a blank object
-                  let previewData = originalStructure ? 
-                    JSON.parse(JSON.stringify(originalStructure)) : 
-                    {
-                      "home-ois": [],
-                      "roaming-consortiums": [],
-                      "other-home-partner-fqdns": [],
-                      "preferred-roaming-partners": []
-                    };
-      
-                  // Apply all the user modifications correctly
-                  Object.entries(userModifiedValues).forEach(([path, value]) => {
-                    const parts = path.split('.');
-                    
-                    // If this is a passpoint-properties nested value
-                    if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
-                      const propertyName = parts[1];
-                      
-                      // Ensure path exists
-                      if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
-                      if (!previewData['passpoint-properties'][propertyName]) {
-                        previewData['passpoint-properties'][propertyName] = {};
-                      }
-                      
-                      previewData['passpoint-properties'][propertyName].value = value;
-                    }
-                    else if (parts.length > 1) {
-                      // Handle other nested paths
-                      let current = previewData;
-                      for (let i = 0; i < parts.length - 1; i++) {
-                        if (!current[parts[i]]) current[parts[i]] = {};
-                        current = current[parts[i]];
-                      }
-                      current[parts[parts.length - 1]] = value;
-                    }
-                    else {
-                      // For simple fields
-                      previewData[path] = value;
-                    }
-                  });
-                  
-                  // Add array data
-                  ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(key => {
-                    if (formData[key]) previewData[key] = formData[key];
-                  });
-                  
-                  return previewData;
-                })(),
-                null, 2)}</code>
-            </Paper>
+                  <Paper 
+                    sx={{ 
+                      mt: 4, 
+                      p: 2, 
+                      whiteSpace: 'pre-wrap', 
+                      backgroundColor: '#f6f6f6',
+                      maxHeight: '300px',
+                      overflow: 'auto'
+                    }}
+                  >
+                    <Typography variant="subtitle1">JSON Preview</Typography>
+                    <code>{JSON.stringify(
+                      // Create a preview that shows how the YAML structure will look
+                      (() => {
+                        // Start with the original structure or a blank object
+                        let previewData = originalStructure ? 
+                          JSON.parse(JSON.stringify(originalStructure)) : 
+                          {
+                            "home-ois": [],
+                            "roaming-consortiums": [],
+                            "other-home-partner-fqdns": [],
+                            "preferred-roaming-partners": []
+                          };
+        
+                        // Apply all the user modifications correctly
+                        Object.entries(userModifiedValues).forEach(([path, value]) => {
+                          const parts = path.split('.');
+                          
+                          // If this is a passpoint-properties nested value
+                          if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
+                            const propertyName = parts[1];
+                            
+                            // Ensure path exists
+                            if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
+                            if (!previewData['passpoint-properties'][propertyName]) {
+                              previewData['passpoint-properties'][propertyName] = {};
+                            }
+                            
+                            previewData['passpoint-properties'][propertyName].value = value;
+                          }
+                          else if (parts.length > 1) {
+                            // Handle other nested paths
+                            let current = previewData;
+                            for (let i = 0; i < parts.length - 1; i++) {
+                              if (!current[parts[i]]) current[parts[i]] = {};
+                              current = current[parts[i]];
+                            }
+                            current[parts[parts.length - 1]] = value;
+                          }
+                          else {
+                            // For simple fields
+                            previewData[path] = value;
+                          }
+                        });
+                        
+                        // Add array data
+                        ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(key => {
+                          if (formData[key]) previewData[key] = formData[key];
+                        });
+                        
+                        return previewData;
+                      })(),
+                      null, 2)}</code>
+                  </Paper>
 
-            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-              <Button variant="contained" color="primary" onClick={generateYaml}>
-                Download YAML
-              </Button>
-              <Button variant="contained" color="secondary" onClick={generateJson}>
-                Download JSON
-              </Button>
-              <Button variant="outlined" color="primary" onClick={viewJsonOnly}>
-                View JSON Only
-              </Button>
-            </Box>
-          </>
-        )}
+                  <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <Button variant="contained" color="primary" onClick={generateYaml}>
+                      Download YAML
+                    </Button>
+                    <Button variant="contained" color="secondary" onClick={generateJson}>
+                      Download JSON
+                    </Button>
+                    <Button variant="outlined" color="primary" onClick={viewJsonOnly}>
+                      View JSON Only
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </div>
+          } />
+          <Route path="/converter" element={<PasspointProfileConverter />} />
+        </Routes>
       </div>
-    </div>
+    </BrowserRouter>
   );
 }
 
