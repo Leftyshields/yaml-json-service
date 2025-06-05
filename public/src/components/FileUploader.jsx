@@ -34,7 +34,7 @@ const FileUploader = ({ onFileUploaded }) => {
 
     try {
       // Be more explicit with the request
-      const response = await fetch('http://sandbox-mac-mini:6001/api/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
         // Important: Let browser set the Content-Type with boundary parameter

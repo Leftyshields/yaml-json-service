@@ -779,7 +779,7 @@ function App() {
     setError(null);
     
     try {
-      const response = await fetch(`http://sandbox-mac-mini:6001/api/convert`, {
+      const response = await fetch('/api/convert', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
