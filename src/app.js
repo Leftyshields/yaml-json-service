@@ -11,9 +11,9 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: '*',  // For development; in production, specify your frontend origin
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: ['http://localhost:5173', 'http://localhost:6001'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
 }));
 app.use(express.json());
 
@@ -33,7 +33,7 @@ app.use('/api', (req, res, next) => {
 
 const PORT = process.env.PORT || 6001;
 app.listen(PORT, () => {
-  console.log(`Server running on http://sandbox-mac-mini:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
 
 module.exports = app;

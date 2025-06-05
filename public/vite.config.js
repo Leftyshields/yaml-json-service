@@ -8,10 +8,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://sandbox-mac-mini.local:6001',
-        changeOrigin: true
-      }
+      '/api': 'http://localhost:6001'
     }
   }
 });
