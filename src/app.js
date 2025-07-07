@@ -11,9 +11,9 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:6001', 'http://sandbox-mac-mini:6001'],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
+  origin: '*',  // For development; in production, specify your frontend origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
@@ -25,8 +25,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Routes
-app.use('/api', yamlRoutes);
+// Add console logging to debug the upload route
+app.use('/api', (req, res, next) => {
+  console.log(`API Request: ${req.method} ${req.path}`);
+  next();
+}, yamlRoutes);
 
 const PORT = process.env.PORT || 6001;
 app.listen(PORT, () => {

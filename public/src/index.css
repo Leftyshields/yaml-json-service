@@ -54,6 +54,63 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+.file-uploader {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: #f8f9fa;
+}
+
+.file-uploader h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.file-input {
+  margin-bottom: 10px;
+}
+
+.upload-button {
+  padding: 8px 16px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.upload-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #dc3545;
+  margin-bottom: 10px;
+}
+
+.success-message {
+  color: #28a745;
+  margin-bottom: 10px;
+}
+
+.uploaded-file-info {
+  margin-bottom: 20px;
+  padding: 10px;
+  border-left: 3px solid #28a745;
+  background-color: #f8f9fa;
+}
+
+.convert-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
