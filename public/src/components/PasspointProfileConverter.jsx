@@ -88,8 +88,19 @@ function PasspointProfileConverter() {
       const response = await axios.post('/api/convert', {
         filePath: uploadedFileMeta.filePath, // Send the server-side path
       });
-      // The backend /convert route should directly return the YAML string
-      setYamlOutput(response.data);
+      
+      console.log('Full response:', response.data); // Debug log
+      
+      // Check if the response has the success format from .mobileconfig processing
+      if (response.data.success && response.data.yaml) {
+        setYamlOutput(response.data.yaml);
+      } else if (typeof response.data === 'string') {
+        // For other file types that return YAML directly
+        setYamlOutput(response.data);
+      } else {
+        // Fallback - convert object to readable format
+        setYamlOutput(JSON.stringify(response.data, null, 2));
+      }
     } catch (err) {
       console.error('Error converting file:', err);
       const errorMsg = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to convert file.';

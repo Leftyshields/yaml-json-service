@@ -135,36 +135,55 @@ router.post('/convert', async (req, res) => {
 
     if (fileExtension === '.mobileconfig') {
       console.log('[SERVER /convert] --- Processing .mobileconfig file ---');
-      const fileData = fs.readFileSync(fullPath); // Read as buffer for plist
-      console.log('[SERVER /convert] .mobileconfig file data read, length:', fileData ? fileData.length : 'null');
       
-      // Try to parse as XML first (some .mobileconfig are XML plists)
       try {
-        const fileContentStr = fileData.toString('utf8');
-        const plistStartIndex = fileContentStr.indexOf('<?xml');
-        const plistEndIndex = fileContentStr.lastIndexOf('</plist>') + '</plist>'.length;
-
-        if (plistStartIndex !== -1 && plistEndIndex > plistStartIndex) {
-            const plistContent = fileContentStr.substring(plistStartIndex, plistEndIndex);
-            parsedData = plist.parse(plistContent);
-            console.log('[SERVER /convert] .mobileconfig parsed as XML plist successfully.');
-        } else {
-            // Fallback to direct buffer parsing if no clear XML structure
-            parsedData = plist.parse(fileData);
-            console.log('[SERVER /convert] .mobileconfig parsed as binary plist (fallback).');
+        // Read file as buffer first
+        const fileBuffer = fs.readFileSync(fullPath);
+        console.log('[SERVER /convert] .mobileconfig file data read, length:', fileBuffer.length);
+        
+        // Try parsing as binary plist first
+        let parsedPlist;
+        try {
+          parsedPlist = plist.parse(fileBuffer);
+          console.log('[SERVER /convert] Binary plist parsing successful');
+        } catch (binaryError) {
+          console.log('[SERVER /convert] Binary plist failed, trying as text:', binaryError.message);
+          
+          // If binary fails, try as text
+          const fileContent = fileBuffer.toString('utf8');
+          parsedPlist = plist.parse(fileContent);
+          console.log('[SERVER /convert] Text plist parsing successful');
         }
-      } catch (e) {
-         // If XML-like parsing fails, try direct buffer parsing
-         console.warn('[SERVER /convert] .mobileconfig XML plist parsing failed, trying direct buffer. Error:', e.message);
-         parsedData = plist.parse(fileData);
-         console.log('[SERVER /convert] .mobileconfig parsed as binary plist (after initial error).');
+        
+        console.log('[SERVER /convert] Parsed plist structure:', JSON.stringify(parsedPlist, null, 2));
+        
+        // Map the plist data to your YAML schema
+        const mappedData = mapMobileConfigToYaml(parsedPlist);
+        
+        // Convert to YAML
+        const yamlOutput = yaml.dump(mappedData, {
+          indent: 2,
+          lineWidth: 120,
+          noRefs: true,
+        });
+        
+        console.log('[SERVER /convert] YAML dump successful. Output length:', yamlOutput.length);
+        
+        // Return the response and exit the function - THIS IS KEY
+        return res.json({
+          success: true,
+          yaml: yamlOutput,
+          originalData: parsedPlist
+        });
+        
+      } catch (error) {
+        console.log('[SERVER /convert] .mobileconfig processing failed:', error.message);
+        throw error;
       }
-      fileTypeForMapping = 'mobileconfig';
-
     } else if (fileExtension === '.xml') {
       console.log('[SERVER /convert] --- Processing .xml file ---');
       const xmlString = fs.readFileSync(fullPath, 'utf8');
-      const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true }); // Options for simpler structure
+      const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
       parsedData = await parser.parseStringPromise(xmlString);
       console.log('[SERVER /convert] .xml file parsed successfully.');
       fileTypeForMapping = 'xml';
@@ -174,28 +193,29 @@ router.post('/convert', async (req, res) => {
       const yamlContent = fs.readFileSync(fullPath, 'utf8');
       const jsonData = yaml.load(yamlContent);
       console.log('[SERVER /convert] YAML to JSON conversion successful.');
-      return res.json(jsonData); // Original behavior for YAML files
+      return res.json(jsonData);
 
     } else {
       console.error('[SERVER /convert] Unsupported file type for conversion:', fileExtension);
       return res.status(400).json({ error: 'Unsupported file type for conversion' });
     }
 
-    // Now, map the parsedData to your target YAML schema
-    console.log('[SERVER /convert] Calling mapToYamlSchema for fileType:', fileTypeForMapping);
-    const mappedData = mapToYamlSchema(parsedData, fileTypeForMapping);
-    
-    console.log('[SERVER /convert] mapToYamlSchema returned, attempting to dump to YAML.');
-    const yamlOutput = yaml.dump(mappedData, {
-      indent: 2,
-      lineWidth: 120, // Adjust as preferred
-      noRefs: true,   // Often good for config files
-    });
-    console.log('[SERVER /convert] YAML dump successful. Output length:', yamlOutput.length);
+    // This section only runs for XML files now (since .mobileconfig and .yaml return early)
+    if (fileTypeForMapping) {
+      console.log('[SERVER /convert] Calling mapToYamlSchema for fileType:', fileTypeForMapping);
+      const mappedData = mapToYamlSchema(parsedData, fileTypeForMapping);
+      
+      console.log('[SERVER /convert] mapToYamlSchema returned, attempting to dump to YAML.');
+      const yamlOutput = yaml.dump(mappedData, {
+        indent: 2,
+        lineWidth: 120,
+        noRefs: true,
+      });
+      console.log('[SERVER /convert] YAML dump successful. Output length:', yamlOutput.length);
 
-    res.setHeader('Content-Type', 'text/yaml');
-    return res.send(yamlOutput);
-
+      res.setHeader('Content-Type', 'text/yaml');
+      return res.send(yamlOutput);
+    }
   } catch (error) {
     console.error('[SERVER /convert] --- ERROR in /convert processing ---');
     console.error('[SERVER /convert] Error message:', error.message);
@@ -207,5 +227,89 @@ router.post('/convert', async (req, res) => {
     });
   }
 });
+
+// Add this helper function to map .mobileconfig data to your schema
+function mapMobileConfigToYaml(parsedPlist) {
+  const mappedData = {
+    "passpoint-properties": {
+      "username": {
+        type: 'string',
+        description: 'User identifier',
+        value: ''
+      },
+      "password": {
+        type: 'string', 
+        description: 'User password',
+        value: ''
+      },
+      "eap-method": {
+        type: 'string',
+        description: 'EAP authentication method',
+        value: ''
+      },
+      "realm": {
+        type: 'string',
+        description: 'Authentication realm', 
+        value: ''
+      }
+    },
+    "home-friendly-name": '',
+    "home-domain": '',
+    "home-ois": [],
+    "roaming-consortiums": [],
+    "other-home-partner-fqdns": [],
+    "preferred-roaming-partners": []
+  };
+
+  // Find Wi-Fi payload in the plist
+  const wifiPayload = parsedPlist.PayloadContent?.find(payload => 
+    payload.PayloadType === 'com.apple.wifi.managed'
+  );
+
+  if (wifiPayload) {
+    // Map basic fields
+    mappedData["home-friendly-name"] = wifiPayload.SSID_STR || '';
+    mappedData["home-domain"] = wifiPayload.DomainName || '';
+
+    // Map EAP configuration
+    const eapConfig = wifiPayload.EAPClientConfiguration;
+    if (eapConfig) {
+      mappedData["passpoint-properties"].username.value = eapConfig.UserName || '';
+      mappedData["passpoint-properties"].realm.value = eapConfig.UserName?.split('@')[1] || '';
+      
+      // Map EAP method
+      if (eapConfig.AcceptEAPTypes && eapConfig.AcceptEAPTypes.length > 0) {
+        const eapType = eapConfig.AcceptEAPTypes[0];
+        const eapTypes = {
+          13: 'TLS',
+          18: 'SIM', 
+          21: 'TTLS',
+          23: 'AKA',
+          50: "AKA'"
+        };
+        mappedData["passpoint-properties"]["eap-method"].value = eapTypes[eapType] || eapType.toString();
+      }
+    }
+
+    // Map roaming consortium OIs
+    if (wifiPayload.RoamingConsortiumOIs) {
+      mappedData["roaming-consortiums"] = Array.isArray(wifiPayload.RoamingConsortiumOIs) 
+        ? wifiPayload.RoamingConsortiumOIs 
+        : [wifiPayload.RoamingConsortiumOIs];
+    }
+
+    // Map home OIs
+    if (wifiPayload.HomeOIs) {
+      const ois = Array.isArray(wifiPayload.HomeOIs) ? wifiPayload.HomeOIs : [wifiPayload.HomeOIs];
+      mappedData["home-ois"] = ois.map(oi => ({
+        name: oi.Name || 'HomeOI',
+        length: '5 Hex',
+        'home-oi': oi.Value || ''
+      }));
+    }
+  }
+
+  return mappedData;
+}
 
 module.exports = router;
