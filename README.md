@@ -4,8 +4,10 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 
 ## 🚀 Live Demo
 
-- **Production App**: [https://passpoint-config-editor.web.app](https://passpoint-config-editor.web.app) *(Firebase Hosting)*
-- **API Endpoint**: Available at `/api/` routes
+- **Frontend Demo**: [https://passpoint-config-editor.web.app](https://passpoint-config-editor.web.app) *(Firebase Hosting)*
+- **Full Functionality**: Requires local backend setup (see development setup below)
+
+> **Note**: The live demo shows the user interface, but file conversion functionality requires running the backend server locally. This is because Firebase Functions require a paid plan for the APIs we use.
 
 ## ✨ Features
 
