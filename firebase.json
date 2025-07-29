@@ -8,27 +8,9 @@
     ],
     "rewrites": [
       {
-        "source": "/api/**",
-        "function": "app"
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }
-    ]
-  },
-  "functions": {
-    "source": ".",
-    "runtime": "nodejs18",
-    "ignore": [
-      "node_modules/**",
-      "public/**",
-      ".git/**",
-      ".gitignore",
-      "firebase.json",
-      "docker-compose.yml",
-      "Dockerfile*",
-      ".dockerignore"
     ]
   }
 }

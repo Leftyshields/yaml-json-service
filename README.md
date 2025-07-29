@@ -4,7 +4,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 
 ## 🚀 Live Demo
 
-- **Production App**: [https://your-project-id.web.app](https://your-project-id.web.app) *(Firebase Hosting)*
+- **Production App**: [https://passpoint-config-editor.web.app](https://passpoint-config-editor.web.app) *(Firebase Hosting)*
 - **API Endpoint**: Available at `/api/` routes
 
 ## ✨ Features
