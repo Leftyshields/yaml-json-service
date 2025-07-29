@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  yaml-json-service:
+    build: .
+    ports:
+      - "6001:6001"
+    environment:
+      - NODE_ENV=production
+      - PORT=6001
+    volumes:
+      # Mount uploads directory for persistence (optional)
+      - uploads_data:/app/src/config/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:6001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  uploads_data:

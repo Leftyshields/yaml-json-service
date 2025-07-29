@@ -1,207 +1,269 @@
-# Passpoint Config Editor
+# Passpoint Configuration Editor & Profile Converter
 
-A Node.js service that provides a web interface for creating and editing Passpoint configurations, with YAML/JSON conversion capabilities.
+A comprehensive web application for editing Passpoint WiFi configurations and converting between various mobile configuration formats (.mobileconfig, .xml, .eap-config, etc.) to YAML/JSON.
 
-## Features
+## 🚀 Live Demo
 
-- Interactive web-based Passpoint configuration editor
-- Form-based editing with specialized UI for complex fields
-- YAML and JSON import/export with structure preservation
-- JSON Schema validation
-- Support for WBA Passpoint Profile Provisioning attributes
-- Specialized UI components for Home OIs and Roaming Consortiums
-- UTF-8 character support
-- Automatic file conversion on upload
-- Preserves original YAML structure when editing values
-- Correctly handles nested object structures and value fields
-- Real-time JSON preview of the current configuration
-- **NEW: Passpoint Profile Converter tool for importing .mobileconfig and .xml files**
+- **Production App**: [https://your-project-id.web.app](https://your-project-id.web.app) *(Firebase Hosting)*
+- **API Endpoint**: Available at `/api/` routes
 
-## Setup
+## ✨ Features
 
-1. Clone the repository:
+### Profile Converter
+- **Multi-format Support**: Convert .mobileconfig, .xml, .eap-config, .docx, .json, .yml files
+- **Smart Parsing**: Automatic detection and parsing of configuration formats
+- **Password Security**: Multiple obfuscation levels for sensitive data
+- **Raw Mode**: Complete unfiltered data extraction
+- **Real-time Preview**: Live YAML/JSON output preview
+
+### Configuration Editor  
+- **Interactive Forms**: Dynamic form generation from YAML schema
+- **Field Validation**: Real-time validation with helpful error messages
+- **Export Options**: Download as YAML or JSON
+- **File Upload**: Load existing configurations for editing
+- **Schema-driven**: Flexible schema-based field rendering
+
+### Technical Features
+- **Automatic Cleanup**: Uploaded files are automatically cleaned up
+- **Multi-format Input**: Support for 15+ file formats
+- **Security**: Non-root Docker containers, input sanitization
+- **Performance**: Multi-stage Docker builds, optimized frontend
+- **Monitoring**: Health checks and comprehensive logging
+
+## 🛠️ Development Setup
+
+### Prerequisites
+- **Node.js** 18+ 
+- **Docker** (optional, for containerized development)
+- **Firebase CLI** (for deployment)
+
+### Quick Start (Local Development)
+
 ```bash
+# Clone the repository
 git clone https://github.com/Leftyshields/yaml-json-service.git
 cd yaml-json-service
-```
 
-2. Install dependencies:
-```bash
 # Install backend dependencies
 npm install
 
-# Install frontend dependencies
-cd public
-npm install
-cd ..
-```
+# Install frontend dependencies  
+cd public && npm install && cd ..
 
-## Running the Application
-
-### Start the Backend Server
-
-```bash
-# From the project root directory
+# Start backend server (Terminal 1)
 npm run dev
+
+# Start frontend dev server (Terminal 2)
+cd public && npm run dev
 ```
 
-This will start the backend server on port 6001.
-
-### Start the Frontend Development Server
-
-```bash
-# From the project root directory
-cd public
-npm run dev
-```
-
-This will start the Vite development server, typically on port 5173.
-
-### Access the Application
-
-- Frontend UI: http://localhost:5173
+**Access the application:**
+- Frontend: http://localhost:5173
 - Backend API: http://localhost:6001
+- Health Check: http://localhost:6001/health
 
-## API Usage
+### Docker Development Setup
 
-Convert YAML to JSON:
 ```bash
-curl -X POST http://localhost:6001/api/convert \
-  -H "Content-Type: application/json" \
-  -d '{"filePath": "src/config/sample.yml"}'
+# Build the Docker image
+docker build -t yaml-json-service .
+
+# Run with Docker Compose
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
 ```
 
-## Available YAML Schemas
+**Access the containerized application:**
+- Application: http://localhost:6001
 
-1. `sample.yml` - Basic example configuration
-2. `passpoint_rev0.yml` - WBA Passpoint Profile Provisioning schema following JSON Schema specification
+## 🔥 Firebase Deployment
 
-## Project Structure
+### Setup Firebase Project
+
+```bash
+# Install Firebase CLI globally
+npm install -g firebase-tools
+
+# Login to Firebase
+firebase login
+
+# Initialize Firebase project
+firebase init
+
+# Select:
+# - Hosting: Configure files for Firebase Hosting
+# - Functions: Configure a Cloud Functions directory
+```
+
+### Deploy to Firebase
+
+```bash
+# Option 1: Use deployment script
+./deploy.sh
+
+# Option 2: Manual deployment
+cd public && npm run build && cd ..
+npm install firebase-functions firebase-admin
+firebase deploy
+```
+
+### Firebase Configuration
+
+Update `.firebaserc` with your project ID:
+```json
+{
+  "projects": {
+    "default": "your-actual-project-id"
+  }
+}
+```
+
+## 📁 Project Structure
+
 ```
 yaml-json-service/
-├── src/                         # Backend code
-│   ├── config/                  # YAML schema files
-│   │   ├── sample.yml
-│   │   └── passpoint_rev0.yml   # JSON Schema for Passpoint attributes
-│   ├── routes/
-│   │   └── yaml.routes.js
-│   ├── services/
-│   │   └── yaml.service.js
-│   └── app.js
-├── public/                      # Frontend code
-│   ├── src/
-│   │   ├── App.jsx              # Main React component
-│   │   ├── components/
-│   │   │   ├── FileUploader.jsx
-│   │   │   └── PasspointProfileConverter.jsx  # New converter component
-│   │   └── ...
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.js
-└── package.json
+├── src/                          # Backend source code
+│   ├── app.js                   # Express server entry point
+│   ├── config/                  # Configuration files
+│   │   ├── passpoint_rev0.yml   # Passpoint schema definition
+│   │   └── uploads/             # Temporary file uploads
+│   ├── routes/                  # API routes
+│   │   └── yaml.routes.js       # Main API endpoints
+│   └── services/                # Business logic
+│       ├── yaml.service.js      # YAML processing
+│       └── mapping.service.js   # Format mapping
+├── public/                      # Frontend React app
+│   ├── src/                     # React source code
+│   │   ├── App.jsx             # Main application
+│   │   ├── components/         # React components
+│   │   └── assets/             # Static assets
+│   ├── package.json            # Frontend dependencies
+│   └── vite.config.js          # Vite configuration
+├── schema/                      # JSON schemas
+├── Dockerfile                   # Docker container definition
+├── docker-compose.yml          # Docker Compose configuration
+├── firebase.json               # Firebase configuration
+├── deploy.sh                   # Deployment script
+└── README.md                   # This file
 ```
 
-## Configuration
+## 🔌 API Endpoints
 
-### Backend Configuration
+### Configuration Management
+- `GET /api/config` - Get Passpoint schema configuration
+- `GET /api/health` - Health check endpoint
 
-Edit `src/app.js` to update the CORS origins to match your hostname:
-```javascript
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:6001', 'http://YOUR-HOSTNAME:6001'],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
-```
+### File Processing
+- `POST /api/upload` - Upload configuration files
+- `POST /api/convert` - Convert uploaded files (with filtering)
+- `POST /api/convert-raw` - Convert with complete data preservation
 
-### Frontend Configuration
+### Maintenance
+- `DELETE /api/cleanup` - Manual cleanup of uploaded files
 
-If your backend is running on a different host or port, update the API URL in the frontend code.
-
-## Usage Guide
-
-### Importing and Editing Files
-
-1. Upload a YAML configuration file using the file uploader
-2. The file will be automatically converted and loaded into the form
-3. Edit values in the form as needed
-4. The JSON preview will update in real-time to show the current configuration
-5. Download the updated configuration as YAML or JSON
-
-### Using the Passpoint Profile Converter
-
-1. Navigate to the "Profile Converter" tab
-2. Upload a legacy Passpoint configuration file (.mobileconfig or .xml)
-3. The converter will automatically parse the file and extract Passpoint-related fields
-4. The parsed data will be displayed in YAML format
-5. You can copy the generated YAML or download it as a file
-6. This YAML can then be imported into the main editor for further modification
-
-### Structure Preservation
-
-When editing an existing YAML file:
-- The original structure of the file is preserved
-- Only the specific values you modify are updated
-- Complex structures (like objects with `value` fields) maintain their format
-- Arrays and nested objects are correctly handled
-
-### Special Field Types
-
-- **Home OIs**: Specialized UI for entering and managing Home OIs with validation
-- **Roaming Consortiums**: Dedicated interface for managing roaming consortium entries
-- **Complex Objects**: Properly structured form inputs for nested object properties
-
-## Development
-
-### Building for Production
+### Example API Usage
 
 ```bash
-# Build the frontend
-cd public
-npm run build
+# Health check
+curl http://localhost:6001/health
 
-# Copy frontend build to backend public directory (if needed)
-cp -r dist/* ../public/
+# Upload and convert a file
+curl -X POST -F "yamlFile=@config.mobileconfig" \
+  http://localhost:6001/api/upload
 
-# Start the production server
-cd ..
-npm start
+# Convert uploaded file
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"filePath": "filename.mobileconfig"}' \
+  http://localhost:6001/api/convert
 ```
 
-## Important Note
+## 🔧 Supported File Formats
 
-The default server configuration uses `sandbox-mac-mini` as the hostname. You'll need to update this in `src/app.js` to match your system's hostname or use `localhost` for local development.
+### Input Formats
+- `.mobileconfig` - Apple mobile configuration profiles
+- `.xml` - XML configuration files  
+- `.eap-config` - EAP Identity Provider configurations
+- `.yml/.yaml` - YAML configuration files
+- `.json` - JSON configuration files
+- `.txt/.conf/.cfg` - Text-based configuration files
+- `.docx/.doc` - Word documents with embedded configurations
+- `.zip` - ZIP archives containing configuration files
 
-## Version History
+### Output Formats
+- **YAML** - Clean, human-readable format
+- **JSON** - Structured data format
+- **Raw** - Complete unfiltered data
 
-### v0.4
-- Added Passpoint Profile Converter for importing legacy configurations
-- Support for .mobileconfig (PLIST) format conversion
-- Support for XML format conversion
-- Automatic mapping of common Passpoint fields
-- Tab navigation between editor and converter
-- Integration with react-router-dom for page navigation
+## 🔒 Security Features
 
-### v0.3
-- Added structure preservation for YAML edits
-- Implemented proper handling of nested object structures
-- Added support for complex objects with value fields
-- Added real-time JSON preview
-- Automatic file conversion on upload
-- Fixed form field mapping to maintain original structure
+- **Input Validation**: Comprehensive file type and content validation
+- **Password Obfuscation**: Multiple levels of sensitive data protection
+- **File Cleanup**: Automatic removal of uploaded files
+- **Non-root Containers**: Docker containers run as unprivileged users
+- **Size Limits**: File upload size restrictions
+- **Timeout Protection**: Request timeout handling
 
-### v0.2
-- Added specialized UI components for Home OIs and Roaming Consortiums
-- Added JSON export functionality
-- Added YAML export with schema preservation
-- Added "View JSON Only" feature
-- Improved UI layout and styling
-- Fixed button rendering issues
+## 📊 Monitoring & Logging
 
-### v0.1
-- Initial release with basic YAML to JSON conversion
-- Web interface for visualization
-- JSON Schema validation
+- **Health Checks**: Built-in health monitoring
+- **Request Logging**: Comprehensive API request logging
+- **Error Tracking**: Detailed error reporting and stack traces
+- **Performance Metrics**: Response time and throughput monitoring
 
-## License
-This project is licensed under the MIT License. See the LICENSE file for more details.
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+**Build Failures:**
+```bash
+# Clear node_modules and reinstall
+rm -rf node_modules public/node_modules
+npm install && cd public && npm install
+```
+
+**Docker Issues:**
+```bash
+# Rebuild Docker image
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+**Firebase Deployment Issues:**
+```bash
+# Check Firebase project configuration
+firebase projects:list
+firebase use your-project-id
+```
+
+### Development Tips
+
+- Use `npm run dev` for auto-reloading backend development
+- Frontend dev server proxies API calls to backend automatically
+- Check `docker-compose logs` for container debugging
+- Use `firebase serve` for local Firebase testing
+
+## 📞 Support
+
+For issues and feature requests, please use the [GitHub Issues](https://github.com/Leftyshields/yaml-json-service/issues) page.
+
+---
+
+**Made with ❤️ for the WiFi Passpoint community**

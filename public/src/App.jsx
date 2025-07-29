@@ -35,7 +35,32 @@ import FileUploader from './components/FileUploader';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import PasspointProfileConverter from './components/PasspointProfileConverter';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+
+// Navigation component that uses useLocation
+function Navigation() {
+  const location = useLocation();
+  
+  // Determine tab value based on current location
+  const getTabValue = () => {
+    if (location.pathname === '/') return 0;
+    if (location.pathname === '/editor') return 1;
+    return 0;
+  };
+
+  return (
+    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
+      <Tabs 
+        value={getTabValue()} 
+        centered
+        sx={{ mt: 2 }}
+      >
+        <Tab label="Profile Converter" component={Link} to="/" />
+        <Tab label="Passpoint Config Editor" component={Link} to="/editor" />
+      </Tabs>
+    </Box>
+  );
+}
 
 function App() {
   // State for form data
@@ -275,6 +300,7 @@ function App() {
   // Add these additional state variables to track the original structure
   const [originalStructure, setOriginalStructure] = useState(null);
   const [userModifiedValues, setUserModifiedValues] = useState({});
+  const [showDynamicFields, setShowDynamicFields] = useState(false); // Hide dynamic fields by default
 
   // Update the handleInputChange function to properly handle nested values
   const handleInputChange = (fieldPath) => (event) => {
@@ -382,9 +408,265 @@ function App() {
   
   // Format field label from kebab-case to Title Case
   const formatFieldLabel = (key) => {
+    // Handle special field name mappings
+    const specialMappings = {
+      'display-name': 'Display Name',
+      'identifier': 'Identifier',
+      'organization': 'Organization',
+      'description': 'Description',
+      'content': 'Content',
+      'removal-disallowed': 'Removal Disallowed',
+      'version': 'Version',
+      'type': 'Type',
+      'uuid': 'UUID'
+    };
+    
+    if (specialMappings[key]) {
+      return specialMappings[key];
+    }
+    
     return key.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
   
+  // Helper function to categorize fields
+  const categorizeFields = () => {
+    const boilerplateFields = new Set([
+      'home-friendly-name',
+      'home-domain', 
+      'home-ois',
+      'roaming-consortiums',
+      'other-home-partner-fqdns',
+      'preferred-roaming-partners'
+    ]);
+
+    const dynamicFields = {};
+    const knownFields = {};
+
+    Object.entries(formData).forEach(([key, value]) => {
+      if (boilerplateFields.has(key)) {
+        knownFields[key] = value;
+      } else {
+        dynamicFields[key] = value;
+      }
+    });
+
+    return { dynamicFields, knownFields };
+  };
+
+  // Render dynamic fields extracted from uploaded files
+  const renderDynamicFields = () => {
+    const { dynamicFields } = categorizeFields();
+    
+    // Don't show dynamic fields section if no file uploaded or no dynamic fields
+    if (!uploadedFile || Object.keys(dynamicFields).length === 0) {
+      return null;
+    }
+
+    return (
+      <>
+        {/* Toggle button for dynamic fields */}
+        <Card sx={{ mt: 2, mb: 2, bgcolor: '#fff3cd', border: '1px solid #ffeaa7' }}>
+          <CardContent sx={{ py: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box>
+                <Typography variant="h6" sx={{ color: '#856404', mb: 0.5 }}>
+                  📁 Extracted Fields Available ({Object.keys(dynamicFields).length} fields)
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#856404' }}>
+                  These fields were automatically extracted from your uploaded configuration file.
+                </Typography>
+              </Box>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showDynamicFields}
+                    onChange={(e) => setShowDynamicFields(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label={showDynamicFields ? "Hide Fields" : "Show Fields"}
+                sx={{ color: '#856404' }}
+              />
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Render the actual dynamic fields only when showDynamicFields is true */}
+        {showDynamicFields && (
+          <Card sx={{ mt: 2, mb: 2, bgcolor: '#e8f4fd' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: '#1976d2' }}>
+                📁 Extracted from Uploaded File ({Object.keys(dynamicFields).length} fields)
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 3, color: '#555' }}>
+                These fields were automatically extracted from your uploaded configuration file.
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {Object.entries(dynamicFields).map(([key, value]) => {
+              // Handle different value types
+              if (Array.isArray(value)) {
+                return (
+                  <Paper key={key} sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: '#495057' }}>
+                      {formatFieldLabel(key)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#6c757d' }}>
+                      Array field with {value.length} items
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      value={value.map(item => 
+                        typeof item === 'object' ? JSON.stringify(item) : item
+                      ).join(', ')}
+                      onChange={(e) => {
+                        const arrayValue = e.target.value.split(',').map(v => v.trim()).filter(Boolean);
+                        setFormData({
+                          ...formData,
+                          [key]: arrayValue
+                        });
+                        setUserModifiedValues({
+                          ...userModifiedValues,
+                          [key]: arrayValue
+                        });
+                      }}
+                      multiline={value.length > 3}
+                      rows={value.length > 3 ? 3 : 1}
+                      variant="outlined"
+                    />
+                  </Paper>
+                );
+              } else if (typeof value === 'object' && value !== null) {
+                return (
+                  <Paper key={key} sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: '#495057' }}>
+                      {formatFieldLabel(key)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#6c757d' }}>
+                      Complex object field (JSON format)
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      value={JSON.stringify(value, null, 2)}
+                      onChange={(e) => {
+                        try {
+                          const objectValue = JSON.parse(e.target.value);
+                          setFormData({
+                            ...formData,
+                            [key]: objectValue
+                          });
+                          setUserModifiedValues({
+                            ...userModifiedValues,
+                            [key]: objectValue
+                          });
+                        } catch (err) {
+                          // Invalid JSON, store as string temporarily
+                          setFormData({
+                            ...formData,
+                            [key]: e.target.value
+                          });
+                        }
+                      }}
+                      multiline
+                      rows={4}
+                      variant="outlined"
+                    />
+                  </Paper>
+                );
+              } else if (typeof value === 'boolean') {
+                return (
+                  <Paper key={key} sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: '#495057' }}>
+                      {formatFieldLabel(key)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#6c757d' }}>
+                      Boolean field (true/false)
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={!!value}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              [key]: e.target.checked
+                            });
+                            setUserModifiedValues({
+                              ...userModifiedValues,
+                              [key]: e.target.checked
+                            });
+                          }}
+                        />
+                      }
+                      label={value ? 'Enabled' : 'Disabled'}
+                    />
+                  </Paper>
+                );
+              } else if (typeof value === 'number') {
+                return (
+                  <Paper key={key} sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: '#495057' }}>
+                      {formatFieldLabel(key)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#6c757d' }}>
+                      Numeric field
+                    </Typography>
+                    <TextField
+                      type="number"
+                      fullWidth
+                      value={value || ''}
+                      onChange={(e) => {
+                        const numValue = parseFloat(e.target.value) || 0;
+                        setFormData({
+                          ...formData,
+                          [key]: numValue
+                        });
+                        setUserModifiedValues({
+                          ...userModifiedValues,
+                          [key]: numValue
+                        });
+                      }}
+                      variant="outlined"
+                    />
+                  </Paper>
+                );
+              } else {
+                // String or other primitive types
+                return (
+                  <Paper key={key} sx={{ p: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1, color: '#495057' }}>
+                      {formatFieldLabel(key)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mb: 2, color: '#6c757d' }}>
+                      Text field
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      value={value || ''}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          [key]: e.target.value
+                        });
+                        setUserModifiedValues({
+                          ...userModifiedValues,
+                          [key]: e.target.value
+                        });
+                      }}
+                      variant="outlined"
+                    />
+                  </Paper>
+                );
+              }
+            })}
+          </Box>
+        </CardContent>
+      </Card>
+        )}
+      </>
+    );
+  };
+
   // Render fields based on schema
   const renderFields = () => {
     if (!schema) return null;
@@ -831,20 +1113,106 @@ function App() {
           }
         });
       };
+
+      // Helper function to clean up field names
+      const cleanFieldName = (fieldName) => {
+        // Remove "Payload" prefix
+        let cleanName = fieldName.replace(/^Payload/, '');
+        
+        // If removing Payload leaves an empty string, use the original
+        if (!cleanName) {
+          cleanName = fieldName;
+        }
+        
+        // Convert PascalCase to kebab-case for consistency
+        cleanName = cleanName.replace(/([A-Z])/g, (match, letter, index) => {
+          return index === 0 ? letter.toLowerCase() : '-' + letter.toLowerCase();
+        });
+        
+        return cleanName;
+      };
+
+      // NEW: Enhanced extraction for dynamic fields from the actual configuration data
+      const extractAllFields = (obj, prefix = '', depth = 0) => {
+        if (!obj || typeof obj !== 'object' || depth > 5) return; // Prevent deep recursion
+        
+        Object.entries(obj).forEach(([key, value]) => {
+          // Clean the field name by removing "Payload" prefix
+          const cleanedKey = cleanFieldName(key);
+          const fullKey = prefix ? `${prefix}.${cleanedKey}` : cleanedKey;
+          
+          // Skip certain system/meta fields but allow configuration fields
+          if (['$id', '$schema', 'type', 'success', 'fileType', 'obfuscationInfo', 'mappingInfo', 'yamlOutput', 'comprehensiveYaml', 'filteredYaml', 'jsonOutput'].includes(key)) return;
+          
+          if (value && typeof value === 'object') {
+            if (Array.isArray(value)) {
+              // Special handling for PayloadContent arrays - extract individual WiFi config fields
+              if (cleanedKey === 'content' && value.length > 0) {
+                value.forEach((item, index) => {
+                  if (item && typeof item === 'object') {
+                    // Extract individual fields from each payload item
+                    extractAllFields(item, index > 0 ? `${fullKey}.${index}` : fullKey, depth + 1);
+                  }
+                });
+              } else {
+                // Handle other arrays - store as comma-separated values for editing
+                if (value.every(item => typeof item === 'string' || typeof item === 'number')) {
+                  extractedValues[fullKey] = value.join(', ');
+                } else {
+                  // Complex array - store as JSON string for now
+                  extractedValues[fullKey] = JSON.stringify(value);
+                }
+              }
+            } else if (value.hasOwnProperty('value')) {
+              // Handle {value: "..."} format
+              extractedValues[fullKey] = value.value;
+            } else if (value.hasOwnProperty('type') && value.hasOwnProperty('description')) {
+              // This looks like a schema definition with a value
+              if (value.hasOwnProperty('value')) {
+                extractedValues[fullKey] = value.value;
+              }
+            } else {
+              // Recurse into nested objects
+              extractAllFields(value, fullKey, depth + 1);
+            }
+          } else if (value !== undefined && value !== null && typeof value !== 'function') {
+            // Store primitive values with cleaned field name
+            extractedValues[fullKey] = value;
+          }
+        });
+      };
+
+      // Extract all fields dynamically from the actual parsed configuration data
+      if (data.originalData) {
+        // Use originalData which contains the actual parsed configuration
+        console.log('Extracting from originalData:', data.originalData);
+        extractAllFields(data.originalData);
+      } else {
+        // Fallback to extracting from the response data
+        console.log('Extracting from response data (fallback):', data);
+        extractAllFields(data);
+      }
       
-      extractUserValues(data);
+      // Ensure boilerplate fields exist even if not in the uploaded file
+      const boilerplateFields = {
+        'home-friendly-name': extractedValues['home-friendly-name'] || '',
+        'home-domain': extractedValues['home-domain'] || '',
+        'home-ois': extractedValues['home-ois'] || [],
+        'roaming-consortiums': extractedValues['roaming-consortiums'] || [],
+        'other-home-partner-fqdns': extractedValues['other-home-partner-fqdns'] || [],
+        'preferred-roaming-partners': extractedValues['preferred-roaming-partners'] || []
+      };
+
+      // Merge boilerplate with extracted values, giving priority to extracted values
+      const mergedValues = { ...boilerplateFields, ...extractedValues };
       
-      // Initialize arrays if needed
-      if (!extractedValues['home-ois']) extractedValues['home-ois'] = [];
-      if (!extractedValues['roaming-consortiums']) extractedValues['roaming-consortiums'] = [];
-      if (!extractedValues['other-home-partner-fqdns']) extractedValues['other-home-partner-fqdns'] = [];
-      if (!extractedValues['preferred-roaming-partners']) extractedValues['preferred-roaming-partners'] = [];
+      console.log('Extracted all fields:', mergedValues);
       
-      // Update form data with extracted values
-      setFormData(extractedValues);
+      // Update form data with merged values
+      setFormData(mergedValues);
       setUserModifiedValues({}); // Reset user modifications
       
-      toast.success('YAML file converted successfully!');
+      toast.success(`YAML file converted successfully! Found ${Object.keys(extractedValues).length} fields.`);
     } catch (err) {
       console.error('Error converting YAML:', err);
       setError(err.message || 'Failed to convert YAML file');
@@ -942,6 +1310,15 @@ function App() {
           exportData[arrayKey] = [...formData[arrayKey]];
         }
       });
+
+      // NEW: Include all dynamic fields extracted from uploaded files
+      const { dynamicFields } = categorizeFields();
+      Object.entries(dynamicFields).forEach(([key, value]) => {
+        // Add dynamic fields to export data
+        exportData[key] = value;
+      });
+      
+      console.log('Export data includes dynamic fields:', Object.keys(dynamicFields));
       
       // Convert to YAML
       const yamlContent = yaml.dump(exportData);
@@ -985,14 +1362,50 @@ function App() {
     }
   };
 
-  // Function to open a new window with only JSON
-  const viewJsonOnly = () => {
-    const jsonContent = JSON.stringify(formData, null, 2);
+  // Function to open a new window with only YAML
+  const viewYamlOnly = () => {
+    // Create the same preview data structure as in the preview section
+    let previewData = originalStructure ? 
+      JSON.parse(JSON.stringify(originalStructure)) : 
+      {
+        "home-ois": [],
+        "roaming-consortiums": [],
+        "other-home-partner-fqdns": [],
+        "preferred-roaming-partners": []
+      };
+
+    // Apply all the user modifications
+    Object.entries(userModifiedValues).forEach(([path, value]) => {
+      const parts = path.split('.');
+      if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
+        const propertyName = parts[1];
+        if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
+        if (!previewData['passpoint-properties'][propertyName]) {
+          previewData['passpoint-properties'][propertyName] = {};
+        }
+        previewData['passpoint-properties'][propertyName].value = value;
+      } else {
+        previewData[path] = value;
+      }
+    });
+    
+    // Add array data
+    ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(key => {
+      if (formData[key]) previewData[key] = formData[key];
+    });
+    
+    // Include all dynamic fields
+    const { dynamicFields } = categorizeFields();
+    Object.entries(dynamicFields).forEach(([key, value]) => {
+      previewData[key] = value;
+    });
+
+    const yamlContent = yaml.dump(previewData, { indent: 2, lineWidth: 80, noRefs: true });
     const newWindow = window.open();
     newWindow.document.write(`
       <html>
         <head>
-          <title>Passpoint JSON</title>
+          <title>Passpoint YAML Configuration</title>
           <style>
             body {
               font-family: monospace;
@@ -1005,12 +1418,13 @@ function App() {
               border-radius: 4px;
               border: 1px solid #ddd;
               overflow: auto;
+              white-space: pre-wrap;
             }
           </style>
         </head>
         <body>
-          <h2>Passpoint Configuration JSON</h2>
-          <pre>${jsonContent}</pre>
+          <h2>Passpoint Configuration YAML</h2>
+          <pre>${yamlContent}</pre>
         </body>
       </html>
     `);
@@ -1028,14 +1442,6 @@ function App() {
     convertYaml(filePath);
   };
 
-  // Add state for tab selection
-  const [tabValue, setTabValue] = useState(0);
-  
-  // Handle tab changes
-  const handleTabChange = (event, newValue) => {
-    setTabValue(newValue);
-  };
-  
   return (
     <BrowserRouter>
       <div style={{ 
@@ -1045,33 +1451,24 @@ function App() {
         <ToastContainer position="top-right" autoClose={3000} />
         
         {/* Add navigation tabs */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
-          <Tabs 
-            value={tabValue} 
-            onChange={handleTabChange} 
-            centered
-            sx={{ mt: 2 }}
-          >
-            <Tab label="Passpoint Config Editor" component={Link} to="/" />
-            <Tab label="Profile Converter" component={Link} to="/converter" />
-          </Tabs>
-        </Box>
+        <Navigation />
         
         {/* Add routes */}
         <Routes>
-          <Route path="/" element={
-            <div style={{
-              backgroundColor: 'white',
-              maxWidth: '900px',
-              width: '100%',
-              padding: '2rem',
-              borderRadius: '8px',
-              boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-              margin: '2rem auto'
-            }}>
-              <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
-                Passpoint Config Editor
-              </Typography>
+          <Route path="/" element={<PasspointProfileConverter />} />
+          <Route path="/editor" element={
+            <Container maxWidth="lg" sx={{ py: 4 }}>
+              <Paper sx={{ 
+                p: 3, 
+                borderRadius: 2,
+                boxShadow: '0px 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
+                  Passpoint Config Editor
+                </Typography>
+                <Typography variant="body1" paragraph>
+                  Edit and create Passpoint configuration files interactively. Upload existing configurations to modify them, or create new ones from scratch using the form fields below.
+                </Typography>
               
               {/* File uploader moved to the top */}
               <Box sx={{ mb: 3, mt: 2 }}>
@@ -1101,6 +1498,19 @@ function App() {
               ) : (
                 <>
                   <Box sx={{ mb: 3 }}>
+                    {/* Show summary of extracted fields only after file upload */}
+                    {uploadedFile && Object.keys(categorizeFields().dynamicFields).length > 0 && (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        📊 Loaded configuration with {Object.keys(formData).length} total fields: 
+                        {Object.keys(categorizeFields().dynamicFields).length} extracted from file + 
+                        {Object.keys(categorizeFields().knownFields).length} standard fields
+                      </Alert>
+                    )}
+                    
+                    {/* Render dynamic fields from uploaded file first */}
+                    {renderDynamicFields()}
+                    
+                    {/* Then render standard boilerplate fields */}
                     {renderFields()}
                   </Box>
     
@@ -1114,31 +1524,32 @@ function App() {
                       overflow: 'auto'
                     }}
                   >
-                    <Typography variant="subtitle1">JSON Preview</Typography>
-                    <code>{JSON.stringify(
-                      // Create a preview that shows how the YAML structure will look
-                      (() => {
-                        // Start with the original structure or a blank object
-                        let previewData = originalStructure ? 
-                          JSON.parse(JSON.stringify(originalStructure)) : 
-                          {
-                            "home-ois": [],
-                            "roaming-consortiums": [],
-                            "other-home-partner-fqdns": [],
-                            "preferred-roaming-partners": []
-                          };
-        
-                        // Apply all the user modifications correctly
-                        Object.entries(userModifiedValues).forEach(([path, value]) => {
-                          const parts = path.split('.');
-                          
-                          // If this is a passpoint-properties nested value
-                          if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
-                            const propertyName = parts[1];
+                    <Typography variant="subtitle1">YAML Preview</Typography>
+                    <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                      {yaml.dump(
+                        // Create a preview that shows how the YAML structure will look
+                        (() => {
+                          // Start with the original structure or a blank object
+                          let previewData = originalStructure ? 
+                            JSON.parse(JSON.stringify(originalStructure)) : 
+                            {
+                              "home-ois": [],
+                              "roaming-consortiums": [],
+                              "other-home-partner-fqdns": [],
+                              "preferred-roaming-partners": []
+                            };
+          
+                          // Apply all the user modifications correctly
+                          Object.entries(userModifiedValues).forEach(([path, value]) => {
+                            const parts = path.split('.');
                             
-                            // Ensure path exists
-                            if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
-                            if (!previewData['passpoint-properties'][propertyName]) {
+                            // If this is a passpoint-properties nested value
+                            if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
+                              const propertyName = parts[1];
+                              
+                              // Ensure path exists
+                              if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
+                              if (!previewData['passpoint-properties'][propertyName]) {
                               previewData['passpoint-properties'][propertyName] = {};
                             }
                             
@@ -1164,9 +1575,20 @@ function App() {
                           if (formData[key]) previewData[key] = formData[key];
                         });
                         
+                        // Include all dynamic fields from uploaded file
+                        const { dynamicFields } = categorizeFields();
+                        Object.entries(dynamicFields).forEach(([key, value]) => {
+                          previewData[key] = value;
+                        });
+                        
                         return previewData;
                       })(),
-                      null, 2)}</code>
+                      {
+                        indent: 2,
+                        lineWidth: 80,
+                        noRefs: true
+                      })}
+                    </pre>
                   </Paper>
 
                   <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
@@ -1176,15 +1598,15 @@ function App() {
                     <Button variant="contained" color="secondary" onClick={generateJson}>
                       Download JSON
                     </Button>
-                    <Button variant="outlined" color="primary" onClick={viewJsonOnly}>
-                      View JSON Only
+                    <Button variant="outlined" color="primary" onClick={viewYamlOnly}>
+                      View YAML Only
                     </Button>
                   </Box>
                 </>
               )}
-            </div>
+              </Paper>
+            </Container>
           } />
-          <Route path="/converter" element={<PasspointProfileConverter />} />
         </Routes>
       </div>
     </BrowserRouter>

@@ -45,3 +45,41 @@ body {
 .read-the-docs {
   color: #888;
 }
+
+/* File uploader styles */
+.file-info {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.file-info p {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+}
+
+.file-info ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.file-info li {
+  margin-bottom: 0.25rem;
+  color: #555;
+}
+
+.file-info code {
+  background-color: #e9ecef;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875em;
+}
+
+.file-info em {
+  color: #6c757d;
+  font-style: italic;
+}

@@ -69,12 +69,24 @@ const FileUploader = ({ onFileUploaded }) => {
 
   return (
     <div className="file-uploader">
-      <h3>Upload YAML File</h3>
+      <h3>Upload Configuration File</h3>
+      <div className="file-info">
+        <p><strong>Supported File Types:</strong></p>
+        <ul>
+          <li><code>.mobileconfig</code> - Apple mobile configuration profiles</li>
+          <li><code>.xml</code> - XML configuration files</li>
+          <li><code>.eap-config</code> - EAP configuration files</li>
+          <li><code>.yml/.yaml</code> - YAML configuration files</li>
+          <li><code>.json</code> - JSON configuration files</li>
+          <li><code>.txt/.conf/.cfg</code> - Text-based configuration files</li>
+          <li><code>.docx/.doc</code> - Word documents with embedded configurations</li>
+        </ul>
+      </div>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <input
             type="file"
-            accept=".yml,.yaml"
+            accept="*/*,.eap-config,.xml,.mobileconfig,.yml,.yaml,.txt,.json,.docx,.doc,.conf,.cfg,.pem,.crt,.cer,.ovpn,.profile,application/xml,text/xml,text/plain,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={handleFileChange}
             className="file-input"
           />
