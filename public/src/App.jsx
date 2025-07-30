@@ -43,11 +43,8 @@ function Navigation() {
   const location = useLocation();
   
   // Determine tab value based on current location
-  const getTabValue = () => {
-    if (location.pathname === '/') return 0;
-    if (location.pathname === '/editor') return 1;
-    return 0;
-  };
+  // Always return 0 since we only have one tab now
+  const getTabValue = () => 0;
 
   return (
     <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
@@ -56,8 +53,9 @@ function Navigation() {
         centered
         sx={{ mt: 2 }}
       >
-        <Tab label="Profile Converter" component={Link} to="/" />
-        <Tab label="Passpoint Config Editor" component={Link} to="/editor" />
+        <Tab label="Passpoint Profile Converter" component={Link} to="/" />
+        {/* Hidden until functionality is ready */}
+        {/* <Tab label="Passpoint Config Editor" component={Link} to="/editor" /> */}
       </Tabs>
     </Box>
   );
@@ -1457,157 +1455,8 @@ function App() {
         {/* Add routes */}
         <Routes>
           <Route path="/" element={<PasspointProfileConverter />} />
-          <Route path="/editor" element={
-            <Container maxWidth="lg" sx={{ py: 4 }}>
-              <Paper sx={{ 
-                p: 3, 
-                borderRadius: 2,
-                boxShadow: '0px 2px 4px rgba(0,0,0,0.1)'
-              }}>
-                <Typography variant="h4" gutterBottom sx={{ color: '#1976d2' }}>
-                  Passpoint Config Editor
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Edit and create Passpoint configuration files interactively. Upload existing configurations to modify them, or create new ones from scratch using the form fields below.
-                </Typography>
-              
-              {/* File uploader moved to the top */}
-              <Box sx={{ mb: 3, mt: 2 }}>
-                <FileUploader onFileUploaded={handleFileUploaded} />
-                
-                {uploadedFile && (
-                  <Paper sx={{ p: 2, mt: 2, bgcolor: '#f0f7ff', borderLeft: '4px solid #1976d2' }}>
-                    <Typography variant="body1">
-                      Using uploaded file: <strong>{uploadedFileName}</strong>
-                    </Typography>
-                    <Button 
-                      variant="contained" 
-                      size="small"
-                      sx={{ mt: 1 }}
-                      onClick={() => convertYaml(uploadedFile)}
-                    >
-                      Convert Uploaded File
-                    </Button>
-                  </Paper>
-                )}
-              </Box>
-              
-              {loading ? (
-                <CircularProgress />
-              ) : error ? (
-                <Alert severity="error">{error}</Alert>
-              ) : (
-                <>
-                  <Box sx={{ mb: 3 }}>
-                    {/* Show summary of extracted fields only after file upload */}
-                    {uploadedFile && Object.keys(categorizeFields().dynamicFields).length > 0 && (
-                      <Alert severity="info" sx={{ mb: 2 }}>
-                        📊 Loaded configuration with {Object.keys(formData).length} total fields: 
-                        {Object.keys(categorizeFields().dynamicFields).length} extracted from file + 
-                        {Object.keys(categorizeFields().knownFields).length} standard fields
-                      </Alert>
-                    )}
-                    
-                    {/* Render dynamic fields from uploaded file first */}
-                    {renderDynamicFields()}
-                    
-                    {/* Then render standard boilerplate fields */}
-                    {renderFields()}
-                  </Box>
-    
-                  <Paper 
-                    sx={{ 
-                      mt: 4, 
-                      p: 2, 
-                      whiteSpace: 'pre-wrap', 
-                      backgroundColor: '#f6f6f6',
-                      maxHeight: '300px',
-                      overflow: 'auto'
-                    }}
-                  >
-                    <Typography variant="subtitle1">YAML Preview</Typography>
-                    <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {yaml.dump(
-                        // Create a preview that shows how the YAML structure will look
-                        (() => {
-                          // Start with the original structure or a blank object
-                          let previewData = originalStructure ? 
-                            JSON.parse(JSON.stringify(originalStructure)) : 
-                            {
-                              "home-ois": [],
-                              "roaming-consortiums": [],
-                              "other-home-partner-fqdns": [],
-                              "preferred-roaming-partners": []
-                            };
-          
-                          // Apply all the user modifications correctly
-                          Object.entries(userModifiedValues).forEach(([path, value]) => {
-                            const parts = path.split('.');
-                            
-                            // If this is a passpoint-properties nested value
-                            if (parts[0] === 'passpoint-properties' && parts.length === 3 && parts[2] === 'value') {
-                              const propertyName = parts[1];
-                              
-                              // Ensure path exists
-                              if (!previewData['passpoint-properties']) previewData['passpoint-properties'] = {};
-                              if (!previewData['passpoint-properties'][propertyName]) {
-                              previewData['passpoint-properties'][propertyName] = {};
-                            }
-                            
-                            previewData['passpoint-properties'][propertyName].value = value;
-                          }
-                          else if (parts.length > 1) {
-                            // Handle other nested paths
-                            let current = previewData;
-                            for (let i = 0; i < parts.length - 1; i++) {
-                              if (!current[parts[i]]) current[parts[i]] = {};
-                              current = current[parts[i]];
-                            }
-                            current[parts[parts.length - 1]] = value;
-                          }
-                          else {
-                            // For simple fields
-                            previewData[path] = value;
-                          }
-                        });
-                        
-                        // Add array data
-                        ['home-ois', 'roaming-consortiums', 'other-home-partner-fqdns', 'preferred-roaming-partners'].forEach(key => {
-                          if (formData[key]) previewData[key] = formData[key];
-                        });
-                        
-                        // Include all dynamic fields from uploaded file
-                        const { dynamicFields } = categorizeFields();
-                        Object.entries(dynamicFields).forEach(([key, value]) => {
-                          previewData[key] = value;
-                        });
-                        
-                        return previewData;
-                      })(),
-                      {
-                        indent: 2,
-                        lineWidth: 80,
-                        noRefs: true
-                      })}
-                    </pre>
-                  </Paper>
-
-                  <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-                    <Button variant="contained" color="primary" onClick={generateYaml}>
-                      Download YAML
-                    </Button>
-                    <Button variant="contained" color="secondary" onClick={generateJson}>
-                      Download JSON
-                    </Button>
-                    <Button variant="outlined" color="primary" onClick={viewYamlOnly}>
-                      View YAML Only
-                    </Button>
-                  </Box>
-                </>
-              )}
-              </Paper>
-            </Container>
-          } />
+          <Route path="*" element={<PasspointProfileConverter />} />
+          {/* Editor route removed until functionality is ready */}
         </Routes>
       </div>
     </BrowserRouter>
