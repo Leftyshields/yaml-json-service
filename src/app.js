@@ -149,7 +149,9 @@ const corsOptions = {
     'https://passpoint-config-editor.web.app',
     'https://passpoint-config-editor.firebaseapp.com',
     'http://passpoint.ddns.net',
-    'https://passpoint.ddns.net'
+    'https://passpoint.ddns.net',
+    'http://wba-app-ougp3.ondigitalocean.app',
+    'https://*.ondigitalocean.app'
   ],
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Upload-Client', 'X-File-Size', 'X-File-Name', 'X-File-Type']
@@ -198,6 +200,20 @@ app.use('/api', apiRouter);
 
 
 // Health check routes (both paths for compatibility)
+app.get('/', cors(corsOptions), (req, res) => {
+  res.json({
+    name: 'YAML/JSON Conversion Service',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health or /api/health',
+      convert: '/api/convert',
+      upload: '/api/upload'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/health', cors(corsOptions), (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -209,8 +225,8 @@ app.get('/api/health', cors(corsOptions), (req, res) => {
 // Only start server if not running in Firebase Functions
 if (!process.env.FUNCTION_TARGET) {
   const PORT = process.env.PORT || 6001;
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
     console.log('[SERVER] Automatic file cleanup scheduled to run every hour');
   });
 }
