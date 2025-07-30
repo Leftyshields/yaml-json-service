@@ -1,5 +1,6 @@
 // public/src/App.jsx
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from './config';
 import {
   Container,
   Typography,
@@ -225,7 +226,7 @@ function App() {
         setLoading(true);
         
         // Fetch YAML from API
-        const response = await fetch('/api/config');
+        const response = await fetch(`${API_BASE_URL}/api/config`);
         if (!response.ok) {
           throw new Error(`Failed to fetch schema: ${response.status} ${response.statusText}`);
         }
@@ -1061,7 +1062,7 @@ function App() {
     setError(null);
     
     try {
-      const response = await fetch('/api/convert', {
+      const response = await fetch(`${API_BASE_URL}/api/convert`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

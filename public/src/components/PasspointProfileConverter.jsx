@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios'; // For making API calls
+import { API_BASE_URL } from '../config';
 import {
   Box,
   Button,
@@ -73,7 +74,7 @@ function PasspointProfileConverter() {
       const formData = new FormData();
       formData.append('yamlFile', selectedFile);
 
-      const response = await axios.post('/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -106,7 +107,7 @@ function PasspointProfileConverter() {
     setError(null);
 
     try {
-      const response = await axios.post('/api/convert', {
+      const response = await axios.post(`${API_BASE_URL}/api/convert`, {
         filePath: uploadedFileMeta.filePath,
         obfuscationLevel: obfuscationLevel // Send obfuscation level to backend
       });

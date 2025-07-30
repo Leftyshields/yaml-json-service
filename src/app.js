@@ -36,6 +36,27 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from the React frontend app built with Vite
+// For Digital Ocean deployment, these files are copied to ./public by the Dockerfile
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Fallback for SPA routing - this allows React Router to handle routes
+app.use((req, res, next) => {
+  // Skip API routes and direct file requests
+  if (req.path.startsWith('/api') || 
+      req.path === '/health' || 
+      req.path.includes('.')) {
+    return next();
+  }
+  
+  // For all other routes, serve the index.html
+  const indexPath = path.join(__dirname, '..', 'public', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
+});
+
 // Health check endpoint for Docker and monitoring
 app.get('/health', (req, res) => {
   res.status(200).json({
