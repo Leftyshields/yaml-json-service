@@ -36,30 +36,7 @@ import FileUploader from './components/FileUploader';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import PasspointProfileConverter from './components/PasspointProfileConverter';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-
-// Navigation component that uses useLocation
-function Navigation() {
-  const location = useLocation();
-  
-  // Determine tab value based on current location
-  // Always return 0 since we only have one tab now
-  const getTabValue = () => 0;
-
-  return (
-    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
-      <Tabs 
-        value={getTabValue()} 
-        centered
-        sx={{ mt: 2 }}
-      >
-        <Tab label="Passpoint Profile Converter" component={Link} to="/" />
-        {/* Hidden until functionality is ready */}
-        {/* <Tab label="Passpoint Config Editor" component={Link} to="/editor" /> */}
-      </Tabs>
-    </Box>
-  );
-}
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 function App() {
   // State for form data
@@ -1449,14 +1426,10 @@ function App() {
       }}>
         <ToastContainer position="top-right" autoClose={3000} />
         
-        {/* Add navigation tabs */}
-        <Navigation />
-        
-        {/* Add routes */}
+        {/* Render PasspointProfileConverter component directly */}
         <Routes>
           <Route path="/" element={<PasspointProfileConverter />} />
           <Route path="*" element={<PasspointProfileConverter />} />
-          {/* Editor route removed until functionality is ready */}
         </Routes>
       </div>
     </BrowserRouter>
