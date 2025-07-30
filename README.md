@@ -2,13 +2,6 @@
 
 A comprehensive web application for editing Passpoint WiFi configurations and converting between various mobile configuration formats (.mobileconfig, .xml, .eap-config, etc.) to YAML/JSON.
 
-## 🚀 Live Demo
-
-- **Frontend Demo**: [https://passpoint-config-editor.web.app](https://passpoint-config-editor.web.app) *(Firebase Hosting)*
-- **Full Functionality**: Requires local backend setup (see development setup below)
-
-> **Note**: The live demo shows the user interface, but file conversion functionality requires running the backend server locally. This is because Firebase Functions require a paid plan for the APIs we use.
-
 ## ✨ Features
 
 ### Profile Converter
@@ -32,12 +25,16 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 - **Performance**: Multi-stage Docker builds, optimized frontend
 - **Monitoring**: Health checks and comprehensive logging
 
+## 🔧 Live Demo
+
+The application is deployed on Digital Ocean and available at:
+- [http://your-droplet-ip](http://your-droplet-ip)
+
 ## 🛠️ Development Setup
 
 ### Prerequisites
 - **Node.js** 18+ 
 - **Docker** (optional, for containerized development)
-- **Firebase CLI** (for deployment)
 
 ### Quick Start (Local Development)
 
@@ -83,189 +80,101 @@ docker-compose down
 **Access the containerized application:**
 - Application: http://localhost:6001
 
-## 🔥 Firebase Deployment
+## 🚢 Deployment to Digital Ocean
 
-### Setup Firebase Project
+### Method 1: Automated Deployment with GitHub Actions
+
+1. **Create a Digital Ocean Droplet**
+   - Create a new Ubuntu droplet
+   - Install Docker and Docker Compose on the droplet using the provided setup script:
+     ```bash
+     ./scripts/setup-droplet.sh
+     ```
+
+2. **Set up GitHub Secrets**
+   Go to your GitHub repository Settings > Secrets > Actions and add the following secrets:
+   - `DOCKER_USERNAME`: Your Docker Hub username
+   - `DOCKER_PASSWORD`: Your Docker Hub password
+   - `DROPLET_IP`: The IP address of your Digital Ocean droplet
+   - `SSH_USER`: SSH username (usually 'root')
+   - `SSH_PRIVATE_KEY`: The private SSH key for accessing your droplet
+
+3. **Configure GitHub Actions**
+   - The workflow file is already configured in `.github/workflows/deploy.yml`
+   - It will build the Docker image, push to Docker Hub, and deploy to your droplet
+   - Commits to the main branch will automatically trigger deployment
+
+4. **Initial Server Setup**
+   Connect to your Digital Ocean server and prepare it:
+   ```bash
+   # Install Docker and Docker Compose
+   curl -L https://raw.githubusercontent.com/Leftyshields/yaml-json-service/main/scripts/setup-droplet.sh > setup-droplet.sh
+   chmod +x setup-droplet.sh
+   ./setup-droplet.sh
+   
+   # Initialize the application
+   curl -L https://raw.githubusercontent.com/Leftyshields/yaml-json-service/main/scripts/init-app.sh > init-app.sh
+   chmod +x init-app.sh
+   ./init-app.sh your-docker-username
+   ```
+
+### Method 2: Manual Deployment
 
 ```bash
-# Install Firebase CLI globally
-npm install -g firebase-tools
-
-# Login to Firebase
-firebase login
-
-# Initialize Firebase project
-firebase init
-
-# Select:
-# - Hosting: Configure files for Firebase Hosting
-# - Functions: Configure a Cloud Functions directory
-```
-
-### Deploy to Firebase
-
-```bash
-# Option 1: Use deployment script
+# Run the deploy script locally
 ./deploy.sh
-
-# Option 2: Manual deployment
-cd public && npm run build && cd ..
-npm install firebase-functions firebase-admin
-firebase deploy
 ```
 
-### Firebase Configuration
+You'll need to set the following environment variables:
+- `DIGITALOCEAN_ACCESS_TOKEN` or `DROPLET_IP`
+- `DOCKER_USERNAME` and `DOCKER_PASSWORD` (for pushing to Docker Hub)
+- `SSH_PRIVATE_KEY` (for connecting to your droplet)
+- `SSH_USER` (usually 'root')
 
-Update `.firebaserc` with your project ID:
-```json
-{
-  "projects": {
-    "default": "your-actual-project-id"
-  }
-}
-```
+## 🛡️ Security Considerations
 
-## 📁 Project Structure
+1. **Password Obfuscation**: Sensitive fields are obfuscated according to the chosen level
+2. **Docker Security**: Application runs as a non-root user in the container
+3. **Input Validation**: File uploads are validated before processing
+4. **Automatic Cleanup**: Temporary files are removed after processing
 
-```
-yaml-json-service/
-├── src/                          # Backend source code
-│   ├── app.js                   # Express server entry point
-│   ├── config/                  # Configuration files
-│   │   ├── passpoint_rev0.yml   # Passpoint schema definition
-│   │   └── uploads/             # Temporary file uploads
-│   ├── routes/                  # API routes
-│   │   └── yaml.routes.js       # Main API endpoints
-│   └── services/                # Business logic
-│       ├── yaml.service.js      # YAML processing
-│       └── mapping.service.js   # Format mapping
-├── public/                      # Frontend React app
-│   ├── src/                     # React source code
-│   │   ├── App.jsx             # Main application
-│   │   ├── components/         # React components
-│   │   └── assets/             # Static assets
-│   ├── package.json            # Frontend dependencies
-│   └── vite.config.js          # Vite configuration
-├── schema/                      # JSON schemas
-├── Dockerfile                   # Docker container definition
-├── docker-compose.yml          # Docker Compose configuration
-├── firebase.json               # Firebase configuration
-├── deploy.sh                   # Deployment script
-└── README.md                   # This file
-```
+## 📝 Troubleshooting
 
-## 🔌 API Endpoints
+If you encounter issues with the deployment:
 
-### Configuration Management
-- `GET /api/config` - Get Passpoint schema configuration
-- `GET /api/health` - Health check endpoint
+1. **Check Docker Container Logs**
+   ```bash
+   docker logs yaml-json-service
+   ```
 
-### File Processing
-- `POST /api/upload` - Upload configuration files
-- `POST /api/convert` - Convert uploaded files (with filtering)
-- `POST /api/convert-raw` - Convert with complete data preservation
+2. **Verify the Application Health**
+   ```bash
+   curl http://localhost/health
+   ```
 
-### Maintenance
-- `DELETE /api/cleanup` - Manual cleanup of uploaded files
+3. **Restart the Container**
+   ```bash
+   docker-compose restart yaml-json-service
+   ```
 
-### Example API Usage
+4. **Digital Ocean Specific Issues**
+   - Ensure firewall is configured to allow port 80:
+     ```bash
+     ufw allow http
+     ```
+   - Check if Docker is running:
+     ```bash
+     systemctl status docker
+     ```
+   - Verify GitHub Actions secrets are correctly configured
+   - Check SSH connection from GitHub Actions
 
-```bash
-# Health check
-curl http://localhost:6001/health
-
-# Upload and convert a file
-curl -X POST -F "yamlFile=@config.mobileconfig" \
-  http://localhost:6001/api/upload
-
-# Convert uploaded file
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"filePath": "filename.mobileconfig"}' \
-  http://localhost:6001/api/convert
-```
-
-## 🔧 Supported File Formats
-
-### Input Formats
-- `.mobileconfig` - Apple mobile configuration profiles
-- `.xml` - XML configuration files  
-- `.eap-config` - EAP Identity Provider configurations
-- `.yml/.yaml` - YAML configuration files
-- `.json` - JSON configuration files
-- `.txt/.conf/.cfg` - Text-based configuration files
-- `.docx/.doc` - Word documents with embedded configurations
-- `.zip` - ZIP archives containing configuration files
-
-### Output Formats
-- **YAML** - Clean, human-readable format
-- **JSON** - Structured data format
-- **Raw** - Complete unfiltered data
-
-## 🔒 Security Features
-
-- **Input Validation**: Comprehensive file type and content validation
-- **Password Obfuscation**: Multiple levels of sensitive data protection
-- **File Cleanup**: Automatic removal of uploaded files
-- **Non-root Containers**: Docker containers run as unprivileged users
-- **Size Limits**: File upload size restrictions
-- **Timeout Protection**: Request timeout handling
-
-## 📊 Monitoring & Logging
-
-- **Health Checks**: Built-in health monitoring
-- **Request Logging**: Comprehensive API request logging
-- **Error Tracking**: Detailed error reporting and stack traces
-- **Performance Metrics**: Response time and throughput monitoring
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+5. **Common Deployment Errors**
+   - `Permission denied (publickey)`: SSH key is not correctly configured
+   - `No such file or directory`: Path issues on the droplet
+   - `Error pulling image`: Docker Hub credentials incorrect
+   - `Connection refused`: Firewall blocking traffic
 
 ## 📄 License
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**Build Failures:**
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules public/node_modules
-npm install && cd public && npm install
-```
-
-**Docker Issues:**
-```bash
-# Rebuild Docker image
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-**Firebase Deployment Issues:**
-```bash
-# Check Firebase project configuration
-firebase projects:list
-firebase use your-project-id
-```
-
-### Development Tips
-
-- Use `npm run dev` for auto-reloading backend development
-- Frontend dev server proxies API calls to backend automatically
-- Check `docker-compose logs` for container debugging
-- Use `firebase serve` for local Firebase testing
-
-## 📞 Support
-
-For issues and feature requests, please use the [GitHub Issues](https://github.com/Leftyshields/yaml-json-service/issues) page.
-
----
-
-**Made with ❤️ for the WiFi Passpoint community**
+This project is licensed under the MIT License - see the LICENSE file for details.

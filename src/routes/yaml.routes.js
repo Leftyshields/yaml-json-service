@@ -13,6 +13,7 @@ const xml2js = require('xml2js'); // Add xml2js
 const { mapToYamlSchema } = require('../services/mapping.service'); // Import the mapping function
 const AdmZip = require('adm-zip');
 const crypto = require('crypto');
+const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
 
 // Password obfuscation utility function
 function obfuscatePasswords(obj, level = 'mask') {
@@ -31,17 +32,56 @@ function obfuscatePasswords(obj, level = 'mask') {
     /credential/i,
     /passphrase/i,
     /pin/i,
-    /code/i
+    /code/i,
+    /username.*password/i, // To catch username+password pairs
+    /user.*pass/i
   ];
 
-  function processValue(value, fieldName = '') {
-    // Check if this field should be obfuscated
-    const isSensitive = sensitiveFields.some(pattern => pattern.test(fieldName));
+  // Common field names that should always be checked regardless of parent context
+  const explicitPasswordFields = [
+    'Password',
+    'UserPassword',
+    'password',
+    'userPassword',
+    'pass',
+    'pwd',
+    'secret',
+    'credentials'
+  ];
+
+  // Helper function to process a primitive value
+  function processValue(value, fieldName, parentKey = '') {
+    // Check if this field should be obfuscated based on field name or parent context
+    const isSensitive = 
+      sensitiveFields.some(pattern => pattern.test(fieldName)) || 
+      sensitiveFields.some(pattern => pattern.test(parentKey)) ||
+      explicitPasswordFields.includes(fieldName);
+    
+    // Even if the field name doesn't match, check for common password values
+    if (!isSensitive && typeof value === 'string' && value) {
+      // Check for common password formats (additional layer of protection)
+      const looksLikePassword = value.length >= 4 && 
+                               (/[a-z]/.test(value) && /[A-Z0-9\W]/.test(value)) &&
+                               (fieldName.toLowerCase().includes('user') || 
+                                parentKey.toLowerCase().includes('auth') || 
+                                parentKey.toLowerCase().includes('eap'));
+      
+      if (looksLikePassword) {
+        return processPasswordValue(value);
+      }
+    }
     
     if (!isSensitive || typeof value !== 'string' || !value) {
       return value;
     }
 
+    // Process the sensitive value
+    return processPasswordValue(value);
+  }
+  
+  // Centralized password processing function to ensure consistent handling
+  function processPasswordValue(value) {
+    // Apply obfuscation based on the selected level
     switch (level) {
       case 'none':
         return value; // No obfuscation
@@ -68,27 +108,31 @@ function obfuscatePasswords(obj, level = 'mask') {
     }
   }
 
-  function processObject(obj) {
-    if (Array.isArray(obj)) {
-      return obj.map(item => processObject(item));
-    }
-    
-    if (obj && typeof obj === 'object') {
-      const result = {};
-      for (const [key, value] of Object.entries(obj)) {
-        if (typeof value === 'object' && value !== null) {
-          result[key] = processObject(value);
-        } else {
-          result[key] = processValue(value, key);
+  // Clone the object to avoid modifying the original
+  const clone = JSON.parse(JSON.stringify(obj));
+  
+  // Process the cloned object
+  function traverse(object, prefix = '') {
+    for (const key in object) {
+      if (Object.prototype.hasOwnProperty.call(object, key)) {
+        const value = object[key];
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        
+        if (value === null) {
+          continue;
+        } else if (typeof value === 'object') {
+          // Recursively process nested objects and arrays
+          traverse(value, fullKey);
+        } else if (typeof value === 'string') {
+          // Process string values with both key and parent context
+          object[key] = processValue(value, key, prefix);
         }
       }
-      return result;
     }
-    
-    return obj;
+    return object;
   }
-
-  return processObject(obj);
+  
+  return traverse(clone);
 }
 
 // ✅ NEW GET /config route to serve passpoint YAML
@@ -107,7 +151,11 @@ router.get('/config', (req, res) => {
 // Set up storage for uploaded files
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../config/uploads');
+    // Use /tmp for Firebase Functions, local uploads for development
+    const uploadDir = process.env.FUNCTION_TARGET 
+      ? '/tmp' 
+      : path.join(__dirname, '../config/uploads');
+    
     // Ensure directory exists with proper permissions
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true, mode: 0o755 });
@@ -169,44 +217,231 @@ const upload = multer({
   }
 });
 
+// Test endpoint to validate upload functionality
+router.post('/test-upload', (req, res) => {
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  
+  console.log('[SERVER /test-upload] Test upload request received');
+  console.log('[SERVER /test-upload] Content-Type:', req.headers['content-type']);
+  console.log('[SERVER /test-upload] Content-Length:', req.headers['content-length']);
+  console.log('[SERVER /test-upload] User-Agent:', req.headers['user-agent']);
+  console.log('[SERVER /test-upload] Environment:', process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local');
 
-// Add new route for file uploads
-router.post('/upload', upload.single('yamlFile'), (req, res) => {
-  try {
-    console.log('[SERVER /upload] Upload request received');
-    
+  // Use multer with memory storage for testing
+  const testUpload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { 
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+      fieldSize: 1024 * 1024 // 1MB field size
+    }
+  }).single('testFile');
+
+  testUpload(req, res, (err) => {
+    const result = {
+      timestamp: new Date().toISOString(),
+      environment: process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local',
+      success: false,
+      details: {}
+    };
+
+    if (err) {
+      console.error('[SERVER /test-upload] Multer error:', err);
+      result.error = err.message;
+      result.errorType = err.code || 'UNKNOWN';
+      result.details.multerError = true;
+      return res.status(400).json(result);
+    }
+
+    if (!req.file) {
+      console.log('[SERVER /test-upload] No file in request');
+      result.error = 'No file uploaded';
+      result.details.noFile = true;
+      return res.status(400).json(result);
+    }
+
+    try {
+      console.log('[SERVER /test-upload] File received successfully');
+      console.log('[SERVER /test-upload] Original name:', req.file.originalname);
+      console.log('[SERVER /test-upload] Size:', req.file.size);
+      console.log('[SERVER /test-upload] Mimetype:', req.file.mimetype);
+      
+      // Test file saving
+      const timestamp = Date.now();
+      const fileName = `test-${timestamp}-${req.file.originalname}`;
+      
+      const uploadDir = process.env.FUNCTION_TARGET ? '/tmp' : path.join(__dirname, '..', 'config', 'uploads');
+      const filePath = path.join(uploadDir, fileName);
+      
+      // Ensure directory exists
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      
+      // Write file
+      fs.writeFileSync(filePath, req.file.buffer);
+      
+      // Verify file was written
+      const stats = fs.statSync(filePath);
+      
+      console.log('[SERVER /test-upload] File saved successfully:', filePath);
+      console.log('[SERVER /test-upload] File size on disk:', stats.size);
+      
+      // Clean up test file immediately
+      fs.unlinkSync(filePath);
+      console.log('[SERVER /test-upload] Test file cleaned up');
+      
+      result.success = true;
+      result.details = {
+        originalName: req.file.originalname,
+        uploadedSize: req.file.size,
+        savedSize: stats.size,
+        mimetype: req.file.mimetype,
+        uploadDir: uploadDir,
+        testFilePath: fileName,
+        sizesMatch: req.file.size === stats.size,
+        fileWritten: true,
+        fileDeleted: true
+      };
+      
+      return res.status(200).json(result);
+      
+    } catch (writeError) {
+      console.error('[SERVER /test-upload] Test error:', writeError);
+      result.error = 'File processing failed: ' + writeError.message;
+      result.details.writeError = true;
+      result.details.errorStack = writeError.stack;
+      return res.status(500).json(result);
+    }
+  });
+});
+
+// Health check endpoint specifically for upload testing
+router.get('/upload-health', (req, res) => {
+  const health = {
+    timestamp: new Date().toISOString(),
+    environment: process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local',
+    multerVersion: require('multer/package.json').version,
+    nodeVersion: process.version,
+    memoryUsage: process.memoryUsage(),
+    uploadDir: process.env.FUNCTION_TARGET ? '/tmp' : path.join(__dirname, '..', 'config', 'uploads'),
+    tmpDirExists: fs.existsSync('/tmp'),
+    tmpDirWritable: (() => {
+      try {
+        const testFile = '/tmp/write-test-' + Date.now();
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    })(),
+    status: 'ok'
+  };
+  
+  console.log('[SERVER /upload-health] Health check:', JSON.stringify(health, null, 2));
+  res.json(health);
+});
+
+// Handle preflight OPTIONS request for test upload
+router.options('/test-upload', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.status(200).send();
+});
+
+// Handle preflight OPTIONS request for upload
+router.options('/upload', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.status(200).send();
+});
+
+// Alternative upload route for Firebase Functions compatibility
+router.post('/upload', (req, res) => {
+  // Set CORS headers specifically for upload
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  
+  console.log('[SERVER /upload] Upload request received');
+  console.log('[SERVER /upload] Content-Type:', req.headers['content-type']);
+  console.log('[SERVER /upload] Content-Length:', req.headers['content-length']);
+  console.log('[SERVER /upload] Origin:', req.headers.origin);
+
+  // For Firebase Functions, use multer with memory storage (more reliable than busboy)
+  const memoryUpload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { 
+      fileSize: 100 * 1024 * 1024, // 100MB limit
+      fieldSize: 100 * 1024 * 1024, // 100MB field size
+      fields: 10,                   // Max number of fields
+      files: 1                      // Max number of files
+    }
+  }).single('yamlFile');
+
+  memoryUpload(req, res, (err) => {
+    if (err) {
+      console.error('[SERVER /upload] Multer error:', err);
+      if (!res.headersSent) {
+        return res.status(400).json({ error: 'Upload failed: ' + err.message });
+      }
+      return;
+    }
+
     if (!req.file) {
       console.log('[SERVER /upload] No file in request');
-      return res.status(400).json({ error: 'No file uploaded' });
+      if (!res.headersSent) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      return;
     }
-    
-    console.log('[SERVER /upload] File received:', req.file.originalname, 'Path:', req.file.path);
-    // We need to give the frontend a path it can send back to /convert,
-    // relative to where /convert will look for it (e.g., within 'src/config/uploads')
-    // The current `filePath` from frontend is good if it's relative to `src` dir.
-    // Let's ensure the path sent back is what /convert expects.
-    // The `req.file.path` is absolute. We need a relative path for the /convert payload.
-    // The `uploads` folder is `src/config/uploads`.
-    // So, if req.file.path is /home/brian/.../src/config/uploads/filename.ext
-    // we want to send back 'config/uploads/filename.ext' or just 'filename.ext'
-    // if /convert will prepend 'config/uploads'
-    
-    // For simplicity, let's assume /convert will look inside 'src/config/uploads/'
-    // So we just need the filename.
-    const fileNameOnly = req.file.filename; // multer already gives a unique filename
-    console.log('[SERVER /upload] Sending back fileNameOnly for /convert:', fileNameOnly);
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: 'File uploaded successfully',
-      // filePath: relativePath, // This was complex, let's simplify
-      filePath: fileNameOnly, // Send just the filename stored in uploads
-      fileName: req.file.originalname // Original filename for display
-    });
-  } catch (error) {
-    console.error('[SERVER /upload] Upload error:', error);
-    return res.status(500).json({ error: error.message });
-  }
+
+    try {
+      console.log('[SERVER /upload] File received:', req.file.originalname);
+      console.log('[SERVER /upload] File size:', req.file.size);
+      console.log('[SERVER /upload] File mimetype:', req.file.mimetype);
+      
+      // Save the file to the appropriate directory
+      const timestamp = Date.now();
+      const fileName = `${timestamp}-${req.file.originalname}`;
+      
+      // Use /tmp for Firebase Functions, local uploads for development
+      const uploadDir = process.env.FUNCTION_TARGET 
+        ? '/tmp' 
+        : path.join(__dirname, '..', 'config', 'uploads');
+      
+      const filePath = path.join(uploadDir, fileName);
+      
+      // Ensure directory exists
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      
+      // Write the file buffer to disk
+      fs.writeFileSync(filePath, req.file.buffer);
+      console.log('[SERVER /upload] File saved to:', filePath);
+
+      if (!res.headersSent) {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'File uploaded successfully',
+          filePath: fileName,
+          fileName: req.file.originalname
+        });
+      }
+      
+    } catch (writeError) {
+      console.error('[SERVER /upload] Write error:', writeError);
+      if (!res.headersSent) {
+        return res.status(500).json({ error: 'Failed to save file: ' + writeError.message });
+      }
+    }
+  });
 });
 
 // Utility function to safely delete uploaded files
@@ -224,7 +459,10 @@ function cleanupUploadedFile(fullPath) {
 // Utility function to clean up old files (older than 1 hour)
 function cleanupOldFiles() {
   try {
-    const uploadDir = path.join(__dirname, '..', 'config', 'uploads');
+    // Use /tmp for Firebase Functions, local uploads for development
+    const uploadDir = process.env.FUNCTION_TARGET 
+      ? '/tmp' 
+      : path.join(__dirname, '..', 'config', 'uploads');
     
     if (!fs.existsSync(uploadDir)) {
       return;
@@ -275,7 +513,12 @@ router.post('/convert-raw', async (req, res) => {
       return res.status(400).json({ error: 'No file path provided' });
     }
     
-    fullPath = path.join(__dirname, '..', 'config', 'uploads', path.basename(filePath));
+    // Use /tmp for Firebase Functions, local uploads for development
+    const uploadDir = process.env.FUNCTION_TARGET 
+      ? '/tmp' 
+      : path.join(__dirname, '..', 'config', 'uploads');
+    
+    fullPath = path.join(uploadDir, path.basename(filePath));
     console.log('[SERVER /convert-raw] Attempting to access file at fullPath:', fullPath);
 
     if (!fs.existsSync(fullPath)) {
@@ -363,19 +606,26 @@ router.post('/convert-raw', async (req, res) => {
       details: error.message 
     });
   } finally {
-    // Always cleanup the uploaded file, even if there was an error
-    if (fullPath) {
-      cleanupUploadedFile(fullPath);
-    }
+    // File is kept for the session to allow reprocessing with different obfuscation levels
+    // No automatic cleanup after conversion to enable reprocessing
+    console.log('[SERVER] Keeping uploaded file for session reuse:', fullPath);
   }
 });
 
 // Update the convert route to handle mobileconfig and XML files
 router.post('/convert', async (req, res) => {
   console.log('[SERVER /convert] --- /convert route hit ---');
+  console.log('[SERVER /convert] Request headers:', req.headers);
+  console.log('[SERVER /convert] Content-Type:', req.headers['content-type']);
   console.log('[SERVER /convert] Request body:', req.body);
 
-  const { filePath, obfuscationLevel = 'none' } = req.body; // Accept obfuscation level
+  // Handle missing body gracefully
+  if (!req.body) {
+    console.error('[SERVER /convert] Request body is undefined');
+    return res.status(400).json({ error: 'Missing request body' });
+  }
+
+  const { filePath, obfuscationLevel = 'none' } = req.body || {}; // Accept obfuscation level
   let fullPath = null;
 
   try {
@@ -386,8 +636,13 @@ router.post('/convert', async (req, res) => {
     
     console.log('[SERVER /convert] Obfuscation level requested:', obfuscationLevel);
     
+    // Use /tmp for Firebase Functions, local uploads for development
+    const uploadDir = process.env.FUNCTION_TARGET 
+      ? '/tmp' 
+      : path.join(__dirname, '..', 'config', 'uploads');
+    
     // Construct the full path to the file in the uploads directory
-    fullPath = path.join(__dirname, '..', 'config', 'uploads', path.basename(filePath)); // Ensure only filename is used
+    fullPath = path.join(uploadDir, path.basename(filePath)); // Ensure only filename is used
     console.log('[SERVER /convert] Attempting to access file at fullPath:', fullPath);
 
     if (!fs.existsSync(fullPath)) {
@@ -425,8 +680,69 @@ router.post('/convert', async (req, res) => {
         
         console.log('[SERVER /convert] Parsed plist structure:', JSON.stringify(parsedPlist, null, 2));
         
+        // Pre-process plist to ensure EAP passwords are identified
+        // This is needed because some mobileconfig files have deeply nested password fields
+        if (obfuscationLevel !== 'none') {
+          // Helper function to find and mark EAP passwords for better obfuscation
+          const preprocessMobileConfigPasswords = (obj) => {
+            if (!obj || typeof obj !== 'object') return;
+            
+            // Look for EAPClientConfiguration sections
+            if (obj.PayloadContent && Array.isArray(obj.PayloadContent)) {
+              obj.PayloadContent.forEach(content => {
+                // Process EAP configurations
+                if (content.EAPClientConfiguration) {
+                  // Explicitly mark passwords
+                  if (content.EAPClientConfiguration.UserPassword) {
+                    content.EAPClientConfiguration._isPasswordField_UserPassword = true;
+                  }
+                  
+                  // Check for passwords in Wi-Fi config
+                  if (content.Password) {
+                    content._isPasswordField_Password = true;
+                  }
+                }
+              });
+            }
+            
+            // Recursively process all object properties
+            for (const key in obj) {
+              if (Object.prototype.hasOwnProperty.call(obj, key) && 
+                  typeof obj[key] === 'object' && 
+                  obj[key] !== null) {
+                preprocessMobileConfigPasswords(obj[key]);
+              }
+            }
+          };
+          
+          // Apply pre-processing
+          preprocessMobileConfigPasswords(parsedPlist);
+        }
+        
         // Apply obfuscation if requested
         const processedPlist = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedPlist, obfuscationLevel) : parsedPlist;
+        
+        // Remove the helper markers we added
+        const cleanupMarkers = (obj) => {
+          if (!obj || typeof obj !== 'object') return;
+          
+          for (const key in obj) {
+            if (key.startsWith('_isPasswordField_')) {
+              delete obj[key];
+            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+              cleanupMarkers(obj[key]);
+            }
+          }
+        };
+        
+        if (obfuscationLevel !== 'none') {
+          cleanupMarkers(processedPlist);
+        }
+        
+        // Log obfuscation results for debugging
+        if (obfuscationLevel !== 'none') {
+          console.log(`[SERVER /convert] Obfuscation applied with level: ${obfuscationLevel}`);
+        }
         
         // Create comprehensive YAML that includes ALL data (with obfuscation applied if requested)
         const comprehensiveYamlOutput = yaml.dump(processedPlist, {
@@ -1353,17 +1669,54 @@ router.post('/convert', async (req, res) => {
       details: error.message 
     });
   } finally {
-    // Always cleanup the uploaded file, even if there was an error
-    if (fullPath) {
-      cleanupUploadedFile(fullPath);
+    // File is kept for the session to allow reprocessing with different obfuscation levels
+    // No automatic cleanup after conversion to enable reprocessing
+    console.log('[SERVER] Keeping uploaded file for session reuse:', fullPath);
+  }
+});
+
+// Add a new route to check if a previously uploaded file is still available
+router.get('/file-status/:filename', (req, res) => {
+  const filename = req.params.filename;
+  if (!filename) {
+    return res.status(400).json({ error: 'No filename provided' });
+  }
+  
+  // Use /tmp for Firebase Functions, local uploads for development
+  const uploadDir = process.env.FUNCTION_TARGET 
+    ? '/tmp' 
+    : path.join(__dirname, '..', 'config', 'uploads');
+  
+  const filePath = path.join(uploadDir, path.basename(filename));
+  
+  if (fs.existsSync(filePath)) {
+    try {
+      const stats = fs.statSync(filePath);
+      return res.status(200).json({ 
+        exists: true, 
+        fileName: path.basename(filename),
+        size: stats.size,
+        uploaded: stats.mtime
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'Error checking file status' });
     }
+  } else {
+    return res.status(404).json({ 
+      exists: false, 
+      fileName: path.basename(filename),
+      message: 'File not found or has been deleted'
+    });
   }
 });
 
 // Manual cleanup endpoint for administrators
 router.delete('/cleanup', (req, res) => {
   try {
-    const uploadDir = path.join(__dirname, '..', 'config', 'uploads');
+    // Use /tmp for Firebase Functions, local uploads for development
+    const uploadDir = process.env.FUNCTION_TARGET 
+      ? '/tmp' 
+      : path.join(__dirname, '..', 'config', 'uploads');
     
     if (!fs.existsSync(uploadDir)) {
       return res.json({ 
