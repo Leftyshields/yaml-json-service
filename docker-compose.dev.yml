@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # Backend service (Node.js/Express API)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    container_name: yaml-json-backend-dev
+    ports:
+      - "6001:6001"
+    volumes:
+      # Mount source code for hot reloading
+      - .:/app
+      - /app/node_modules
+      # Mount uploads directory for persistence
+      - uploads_data:/app/src/config/uploads
+    environment:
+      - NODE_ENV=development
+      - PORT=6001
+      - CHOKIDAR_USEPOLLING=true
+    command: npm run dev
+    restart: unless-stopped
+    networks:
+      - yaml-json-network
+
+  # Frontend service (React/Vite)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend
+    container_name: yaml-json-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source code for hot reloading
+      - ./public:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - DOCKER_ENV=true
+      - VITE_API_BASE_URL=http://localhost:6001
+      - CHOKIDAR_USEPOLLING=true
+    command: npm run dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - yaml-json-network
+
+volumes:
+  uploads_data:
+
+networks:
+  yaml-json-network:
+    driver: bridge

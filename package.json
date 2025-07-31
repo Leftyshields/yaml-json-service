@@ -5,7 +5,17 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "dev:start": "./dev-start.sh",
+    "dev:stop": "./dev-stop.sh",
+    "dev:restart": "./dev-restart.sh",
+    "dev:logs": "./dev-logs.sh",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up --build",
+    "docker:dev:detached": "docker-compose -f docker-compose.dev.yml up --build -d",
+    "docker:dev:stop": "docker-compose -f docker-compose.dev.yml down",
+    "docker:dev:logs": "docker-compose -f docker-compose.dev.yml logs -f",
+    "docker:dev:restart": "docker-compose -f docker-compose.dev.yml restart",
+    "docker:prod": "docker-compose up --build"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +38,8 @@
     "js-yaml": "^4.1.0",
     "multer": "^2.0.0",
     "plist": "^3.1.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.3",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

@@ -8,7 +8,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:6001'
+      '/api': process.env.NODE_ENV === 'development' && process.env.DOCKER_ENV 
+        ? 'http://backend:6001'  // Docker service name
+        : 'http://localhost:6001' // Local development
     }
   }
 });

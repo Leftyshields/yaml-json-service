@@ -6,6 +6,8 @@ const multer = require('multer');
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const websocketService = require('./services/websocket.service');
 
 // Load environment variables
 dotenv.config();
@@ -267,8 +269,17 @@ app.get('/api/health', cors(corsOptions), (req, res) => {
 // Only start server if not running in Firebase Functions
 if (!process.env.FUNCTION_TARGET) {
   const PORT = process.env.PORT || 6001;
-  app.listen(PORT, '0.0.0.0', () => {
+  
+  // Create HTTP server
+  const server = http.createServer(app);
+  
+  // Initialize WebSocket service
+  websocketService.initWebSocket(server);
+  
+  // Start server
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`WebSocket server available at ws://0.0.0.0:${PORT}/api/ws`);
     console.log('[SERVER] Automatic file cleanup scheduled to run every hour');
   });
 }

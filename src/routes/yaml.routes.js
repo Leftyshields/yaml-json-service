@@ -11,9 +11,13 @@ const plist = require('plist');
 const yaml = require('js-yaml');
 const xml2js = require('xml2js'); // Add xml2js
 const { mapToYamlSchema } = require('../services/mapping.service'); // Import the mapping function
+const certService = require('../services/cert.service'); // Import the certificate service
+const { v4: uuidv4 } = require('uuid');
+const { sendConversionUpdate } = require('../services/websocket.service'); // Import WebSocket service
 const AdmZip = require('adm-zip');
 const crypto = require('crypto');
 const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
+const { bufferJsonReplacer, processBinaryData } = require('../utils/binary-helpers'); // Import binary data helpers
 
 // Password obfuscation utility function
 function obfuscatePasswords(obj, level = 'mask') {
@@ -21,55 +25,48 @@ function obfuscatePasswords(obj, level = 'mask') {
     return obj;
   }
 
-  // Define sensitive field patterns (case-insensitive)
+  // Define ONLY password field patterns (case-insensitive) - more selective
   const sensitiveFields = [
-    /password/i,
-    /passwd/i,
-    /pwd/i,
-    /secret/i,
-    /key/i,
-    /token/i,
-    /credential/i,
-    /passphrase/i,
-    /pin/i,
-    /code/i,
-    /username.*password/i, // To catch username+password pairs
-    /user.*pass/i
+    /^password$/i,
+    /^passwd$/i,
+    /^pwd$/i,
+    /^secret$/i,
+    /^userPassword$/i,
+    /^passphrase$/i
   ];
 
-  // Common field names that should always be checked regardless of parent context
+  // EXCLUDE fields that might match the above patterns but are not passwords
+  const excludedFields = [
+    'OuterIdentity',
+    'UserName', 
+    'ServerID', 
+    'TLSTrustedServerNames',
+    'ServerSideCredential',
+    'DisplayedOperatorName',
+    'DomainName',
+    'TTLSInnerAuthentication'  // Added to excluded fields to prevent redaction
+  ];
+
+  // ONLY these specific field names should be obfuscated
   const explicitPasswordFields = [
     'Password',
-    'UserPassword',
-    'password',
-    'userPassword',
-    'pass',
-    'pwd',
-    'secret',
-    'credentials'
+    'UserPassword'
+    // Removed TTLSInnerAuthentication as it's an authentication method, not a password
   ];
 
   // Helper function to process a primitive value
   function processValue(value, fieldName, parentKey = '') {
-    // Check if this field should be obfuscated based on field name or parent context
-    const isSensitive = 
-      sensitiveFields.some(pattern => pattern.test(fieldName)) || 
-      sensitiveFields.some(pattern => pattern.test(parentKey)) ||
-      explicitPasswordFields.includes(fieldName);
-    
-    // Even if the field name doesn't match, check for common password values
-    if (!isSensitive && typeof value === 'string' && value) {
-      // Check for common password formats (additional layer of protection)
-      const looksLikePassword = value.length >= 4 && 
-                               (/[a-z]/.test(value) && /[A-Z0-9\W]/.test(value)) &&
-                               (fieldName.toLowerCase().includes('user') || 
-                                parentKey.toLowerCase().includes('auth') || 
-                                parentKey.toLowerCase().includes('eap'));
-      
-      if (looksLikePassword) {
-        return processPasswordValue(value);
-      }
+    // Skip excluded fields explicitly
+    if (excludedFields.includes(fieldName)) {
+      return value;
     }
+    
+    // Check if this is EXACTLY a password field (more strict matching)
+    const isSensitive = 
+      explicitPasswordFields.includes(fieldName) || 
+      sensitiveFields.some(pattern => pattern.test(fieldName));
+    
+    // No more heuristics for password detection - only use explicit field names
     
     if (!isSensitive || typeof value !== 'string' || !value) {
       return value;
@@ -81,6 +78,19 @@ function obfuscatePasswords(obj, level = 'mask') {
   
   // Centralized password processing function to ensure consistent handling
   function processPasswordValue(value) {
+    // Don't process empty values
+    if (!value || value.length === 0) {
+      return value;
+    }
+    
+    // Don't process values that are already obfuscated
+    if (value === '***REDACTED***' || 
+        value.startsWith('[PASSWORD-') || 
+        value.startsWith('sha256:') || 
+        value.startsWith('base64:')) {
+      return value;
+    }
+    
     // Apply obfuscation based on the selected level
     switch (level) {
       case 'none':
@@ -113,6 +123,32 @@ function obfuscatePasswords(obj, level = 'mask') {
   
   // Process the cloned object
   function traverse(object, prefix = '') {
+    // Direct check for the specific structure in the screenshot - more selective approach
+    if (object && typeof object === 'object') {
+      // Specific check for EAP configuration structures
+      if (object.EAPClientConfiguration) {
+        // ONLY obfuscate the UserPassword field
+        if (object.EAPClientConfiguration.UserPassword) {
+          console.log('[OBFUSCATE] Found UserPassword in EAPClientConfiguration, obfuscating');
+          object.EAPClientConfiguration.UserPassword = processPasswordValue(object.EAPClientConfiguration.UserPassword);
+        }
+      }
+
+      // Direct check for Password field at this level - ONLY PASSWORD
+      if (object.Password && typeof object.Password === 'string' && 
+          !prefix.includes('TLS') && !prefix.includes('Server')) {
+        console.log('[OBFUSCATE] Found direct Password field, obfuscating');
+        object.Password = processPasswordValue(object.Password);
+      }
+
+      // Direct check for UserPassword field at this level - ONLY UserPassword 
+      if (object.UserPassword && typeof object.UserPassword === 'string') {
+        console.log('[OBFUSCATE] Found direct UserPassword field, obfuscating');
+        object.UserPassword = processPasswordValue(object.UserPassword);
+      }
+    }
+
+    // Continue with normal traversal
     for (const key in object) {
       if (Object.prototype.hasOwnProperty.call(object, key)) {
         const value = object[key];
@@ -625,7 +661,20 @@ router.post('/convert', async (req, res) => {
     return res.status(400).json({ error: 'Missing request body' });
   }
 
-  const { filePath, obfuscationLevel = 'none' } = req.body || {}; // Accept obfuscation level
+  const { 
+    filePath, 
+    obfuscationLevel = 'none',
+    certHandling = 'obfuscate', // Default to obfuscate certificates
+    streamId = uuidv4() // Generate stream ID if not provided
+  } = req.body || {}; 
+  
+  // Send initial update to any websocket subscribers
+  sendConversionUpdate(streamId, {
+    status: 'started',
+    message: 'Starting file conversion',
+    file: filePath
+  });
+  
   let fullPath = null;
 
   try {
@@ -683,39 +732,36 @@ router.post('/convert', async (req, res) => {
         // Pre-process plist to ensure EAP passwords are identified
         // This is needed because some mobileconfig files have deeply nested password fields
         if (obfuscationLevel !== 'none') {
-          // Helper function to find and mark EAP passwords for better obfuscation
+          // Helper function to selectively obfuscate only true password fields
           const preprocessMobileConfigPasswords = (obj) => {
             if (!obj || typeof obj !== 'object') return;
             
-            // Look for EAPClientConfiguration sections
+            // Look for EAPClientConfiguration sections - ONLY target specific paths
             if (obj.PayloadContent && Array.isArray(obj.PayloadContent)) {
               obj.PayloadContent.forEach(content => {
-                // Process EAP configurations
+                // Process EAP configurations - exact path
                 if (content.EAPClientConfiguration) {
-                  // Explicitly mark passwords
+                  // ONLY obfuscate UserPassword field
                   if (content.EAPClientConfiguration.UserPassword) {
-                    content.EAPClientConfiguration._isPasswordField_UserPassword = true;
-                  }
-                  
-                  // Check for passwords in Wi-Fi config
-                  if (content.Password) {
-                    content._isPasswordField_Password = true;
+                    console.log('[SERVER] Found UserPassword in EAPClientConfiguration, obfuscating');
+                    // Fixed: Use mask obfuscation directly since we're pre-processing
+                    content.EAPClientConfiguration.UserPassword = '***REDACTED***';
                   }
                 }
               });
             }
             
-            // Recursively process all object properties
-            for (const key in obj) {
-              if (Object.prototype.hasOwnProperty.call(obj, key) && 
-                  typeof obj[key] === 'object' && 
-                  obj[key] !== null) {
-                preprocessMobileConfigPasswords(obj[key]);
-              }
+            // Special handling for s structure seen in some profiles
+            if (obj.s && obj.s.Password && typeof obj.s.Password === 'string') {
+              console.log('[SERVER] Found Password in s structure, obfuscating');
+              // Fixed: Use mask obfuscation directly since we're pre-processing
+              obj.s.Password = '***REDACTED***';
             }
+            
+            // Do NOT recursively process all object properties - only target specific paths
           };
           
-          // Apply pre-processing
+          // Apply pre-processing - more selective approach
           preprocessMobileConfigPasswords(parsedPlist);
         }
         
@@ -761,14 +807,18 @@ router.post('/convert', async (req, res) => {
         
         console.log('[SERVER /convert] YAML dump successful. Full output length:', comprehensiveYamlOutput.length);
         
+        // Process binary data for proper display
+        const processedForJson = processBinaryData(processedPlist);
+        const originalForJson = processBinaryData(parsedPlist);
+        
         // Return the response with processed data as primary YAML
         return res.json({
           success: true,
           yamlOutput: comprehensiveYamlOutput,         // PRIMARY: Full data (obfuscated if requested)
           comprehensiveYaml: comprehensiveYamlOutput,  // ALSO: Same data for comprehensive tab
           filteredYaml: filteredYamlOutput,            // SECONDARY: Filtered version (also obfuscated)
-          jsonOutput: JSON.stringify(processedPlist, null, 2), // JSON format for JSON tab
-          originalData: parsedPlist,                   // Keep original unobfuscated for internal use
+          jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2), // JSON format for JSON tab with proper binary handling
+          originalData: originalForJson,               // Keep original but with proper binary formatting
           obfuscationInfo: {
             level: obfuscationLevel,
             applied: obfuscationLevel !== 'none',
@@ -1231,24 +1281,79 @@ router.post('/convert', async (req, res) => {
         parsedData = await Promise.race([parsePromise, timeoutPromise]);
         console.log('[SERVER /convert] .xml file parsed successfully.');
         
-        // Apply obfuscation if requested
-        const processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedData, obfuscationLevel) : parsedData;
+        // First apply password obfuscation if requested
+        let processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedData, obfuscationLevel) : parsedData;
         
-        // Return structured response for XML files
-        return res.json({
+        // Next apply certificate handling if requested
+        if (certHandling !== 'preserve') {
+          console.log('[SERVER /convert] Applying certificate handling mode:', certHandling);
+          processedData = certService.processCertificatesInObject(processedData, certHandling);
+        }
+        
+        // Find any certificates in the data
+        const certMetadata = {};
+        const findCerts = (obj, path = '') => {
+          if (!obj || typeof obj !== 'object') return;
+          
+          if (Array.isArray(obj)) {
+            obj.forEach((item, index) => findCerts(item, `${path}[${index}]`));
+            return;
+          }
+          
+          for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            if (typeof value === 'string' && certService.isCertificateData(value)) {
+              const info = certService.extractCertInfo(value);
+              if (info) {
+                certMetadata[currentPath] = info;
+              }
+            } else if (typeof value === 'object' && value !== null) {
+              findCerts(value, currentPath);
+            }
+          }
+        };
+        
+        // Collect certificate metadata from original data
+        findCerts(parsedData);
+        
+        // Process binary data for proper display
+        const processedForJson = processBinaryData(processedData);
+        const originalForJson = processBinaryData(parsedData);
+        
+        // Prepare the response data
+        const responseData = {
           success: true,
           fileType: 'xml',
-          yamlOutput: yaml.dump(processedData, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
-          comprehensiveYaml: yaml.dump(processedData, { indent: 2, lineWidth: 120, noRefs: true }),
-          jsonOutput: JSON.stringify(processedData, null, 2), // JSON format for JSON tab
+          streamId,
+          yamlOutput: yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
+          comprehensiveYaml: yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true }),
+          jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2), // JSON format for JSON tab with buffer handling
           data: processedData,
-          originalData: parsedData, // Keep original unobfuscated
-          obfuscationInfo: {
-            level: obfuscationLevel,
-            applied: obfuscationLevel !== 'none',
-            note: obfuscationLevel !== 'none' ? `Passwords obfuscated using '${obfuscationLevel}' method` : 'No obfuscation applied'
+          originalData: originalForJson, // Keep original but with proper binary formatting
+          certificateInfo: Object.keys(certMetadata).length > 0 ? certMetadata : null // Include certificate metadata
+        };
+        
+        // Send final update via WebSocket
+        sendConversionUpdate(streamId, {
+          status: 'completed',
+          message: 'Conversion completed successfully',
+          result: {
+            fileType: 'xml',
+            yamlPreview: yaml.dump(processedData, { indent: 2 }).substring(0, 500) + '...',
+            certificateCount: Object.keys(certMetadata).length
           }
         });
+        
+        // Add obfuscation info to response data
+        responseData.obfuscationInfo = {
+          level: obfuscationLevel,
+          applied: obfuscationLevel !== 'none',
+          note: obfuscationLevel !== 'none' ? `Passwords obfuscated using '${obfuscationLevel}' method` : 'No obfuscation applied'
+        };
+        
+        // Return structured response
+        return res.json(responseData);
         
       } catch (xmlError) {
         console.log('[SERVER /convert] XML parsing failed:', xmlError.message);
@@ -1321,14 +1426,80 @@ router.post('/convert', async (req, res) => {
       const jsonData = yaml.load(yamlContent);
       console.log('[SERVER /convert] YAML to JSON conversion successful.');
       
+      // Apply password obfuscation if requested
+      let processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(jsonData, obfuscationLevel) : jsonData;
+      
+      // Apply certificate handling if requested
+      if (certHandling !== 'preserve') {
+        console.log('[SERVER /convert] Applying certificate handling mode:', certHandling);
+        processedData = certService.processCertificatesInObject(processedData, certHandling);
+        // Debug: Show a preview of the processed YAML output
+        const debugYaml = require('js-yaml').dump(processedData, { indent: 2, lineWidth: 120, noRefs: true });
+        console.log(`[SERVER /convert] YAML output after cert handling (${certHandling}):\n`, debugYaml.substring(0, 500));
+      }
+      
+      // Find any certificates in the data
+      const certMetadata = {};
+      const findCerts = (obj, path = '') => {
+        if (!obj || typeof obj !== 'object') return;
+        
+        if (Array.isArray(obj)) {
+          obj.forEach((item, index) => findCerts(item, `${path}[${index}]`));
+          return;
+        }
+        
+        for (const [key, value] of Object.entries(obj)) {
+          const currentPath = path ? `${path}.${key}` : key;
+          // Check direct string value
+          if (typeof value === 'string' && certService.isCertificateData(value)) {
+            const info = certService.extractCertInfo(value);
+            if (info) {
+              certMetadata[currentPath] = info;
+            }
+          // Check for certificate under '_' property (EAP/Passpoint pattern)
+          } else if (
+            value && typeof value === 'object' &&
+            Object.prototype.hasOwnProperty.call(value, '_') &&
+            typeof value._ === 'string' &&
+            certService.isCertificateData(value._)
+          ) {
+            const info = certService.extractCertInfo(value._);
+            if (info) {
+              certMetadata[`${currentPath}._`] = info;
+            }
+            // Continue to check nested objects as well
+            findCerts(value, currentPath);
+          } else if (typeof value === 'object' && value !== null) {
+            findCerts(value, currentPath);
+          }
+        }
+      };
+      
+      // Collect certificate metadata from original data
+      findCerts(jsonData);
+      
+      // Process binary data for proper display
+      const processedForJson = processBinaryData(processedData);
+      const originalForJson = processBinaryData(jsonData);
+
+      // Always generate YAML output from processed data (with cert handling applied)
+      const yamlOutput = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
+      const comprehensiveYaml = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
+
       return res.json({
         success: true,
         fileType: 'yaml',
-        yamlOutput: yamlContent,                     // Original YAML content
-        comprehensiveYaml: yamlContent,              // Same data for comprehensive tab
-        jsonOutput: JSON.stringify(jsonData, null, 2), // Converted JSON for JSON tab
-        data: jsonData,
-        originalData: yamlContent
+        yamlOutput,
+        comprehensiveYaml,
+        jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2),
+        data: processedData,
+        originalData: originalForJson,
+        certificateInfo: Object.keys(certMetadata).length > 0 ? certMetadata : null,
+        obfuscationInfo: {
+          level: obfuscationLevel,
+          applied: obfuscationLevel !== 'none',
+          note: obfuscationLevel !== 'none' ? `Passwords obfuscated using '${obfuscationLevel}' method` : 'No obfuscation applied'
+        }
       });
 
     } else if (fileExtension === '.eap-config') {

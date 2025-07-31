@@ -1,0 +1,36 @@
+# Development Dockerfile with multi-stage build for hot reloading
+FROM node:18-alpine AS base
+
+# Install git for any git-based dependencies
+RUN apk add --no-cache git
+
+# Backend development stage
+FROM base AS backend
+WORKDIR /app
+
+# Copy backend package files
+COPY package*.json ./
+RUN npm install
+
+# Create uploads directory with proper permissions
+RUN mkdir -p src/config/uploads && chmod 755 src/config/uploads
+
+# Expose backend port
+EXPOSE 6001
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"]
+
+# Frontend development stage
+FROM base AS frontend
+WORKDIR /app
+
+# Copy frontend package files
+COPY public/package*.json ./
+RUN npm install
+
+# Expose frontend port (Vite default)
+EXPOSE 5173
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"]

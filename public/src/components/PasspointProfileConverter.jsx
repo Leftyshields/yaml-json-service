@@ -10,8 +10,6 @@ import {
   TextField,
   Alert,
   CircularProgress,
-  ToggleButton,
-  ToggleButtonGroup,
   FormControl,
   InputLabel,
   Select,
@@ -19,6 +17,7 @@ import {
   Chip
 } from '@mui/material';
 // Removed: yaml, plist, xml2js imports as this logic moves to backend
+import ConversionCompareViewer from './ConversionCompareViewer';
 
 function PasspointProfileConverter() {
   const [selectedFile, setSelectedFile] = useState(null); // Store the File object for upload
@@ -29,11 +28,12 @@ function PasspointProfileConverter() {
   const [comprehensiveYamlOutput, setComprehensiveYamlOutput] = useState(''); // Store comprehensive YAML with all data
   const [mappingInfo, setMappingInfo] = useState(null); // Store information about data filtering
   const [obfuscationInfo, setObfuscationInfo] = useState(null); // Store obfuscation information
+  const [certificateInfo, setCertificateInfo] = useState(null); // Store certificate information
   const [error, setError] = useState(null);
   const [loadingUpload, setLoadingUpload] = useState(false);
   const [loadingConvert, setLoadingConvert] = useState(false);
-  const [showFormat, setShowFormat] = useState('yaml'); // 'yaml', 'json', or 'original'
   const [obfuscationLevel, setObfuscationLevel] = useState('none'); // Password obfuscation level
+  const [certHandling, setCertHandling] = useState('preserve'); // Certificate handling mode
 
   // Obfuscation level options
   const obfuscationLevels = {
@@ -45,18 +45,31 @@ function PasspointProfileConverter() {
     'base64': 'Base64 encode passwords'
   };
 
-  // Function to handle file selection from input
+  // Certificate handling options
+  const certHandlingModes = {
+    'preserve': 'Show original certificate data',
+    'obfuscate': 'Replace with [CERTIFICATE DATA REDACTED]',
+    'info': 'Show certificate info only',
+    'hash': 'Show SHA-256 hash reference',
+    'truncate': 'Show BEGIN/END markers only',
+    'base64': 'Show as base64 (if not already)'
+  };
+
+    // Function to handle file selection from input
   const handleFileSelection = (event) => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
-      setUploadedFileMeta(null); // Reset previous upload info
-      setYamlOutput(''); // Reset previous output
-      setJsonOutput(''); // Reset previous JSON output
-      setOriginalDataOutput(''); // Reset original data output
-      setComprehensiveYamlOutput(''); // Reset comprehensive output
-      setMappingInfo(null); // Reset mapping info
-      setError(null);
+      setError(null); // Clear any previous errors
+    }
+  };
+
+  // Function to handle certificate handling mode change
+  const handleCertHandlingChange = (newMode) => {
+    setCertHandling(newMode);
+    // If we have converted data, re-convert with new cert handling mode
+    if (uploadedFileMeta?.filePath) {
+      handleFileConvert();
     }
   };
 
@@ -109,7 +122,8 @@ function PasspointProfileConverter() {
     try {
       const response = await axios.post(`${API_BASE_URL}/api/convert`, {
         filePath: uploadedFileMeta.filePath,
-        obfuscationLevel: obfuscationLevel // Send obfuscation level to backend
+        obfuscationLevel: obfuscationLevel, // Send obfuscation level to backend
+        certHandling: certHandling // Send certificate handling mode to backend
       });
 
       console.log('Conversion response:', response.data);
@@ -138,6 +152,11 @@ function PasspointProfileConverter() {
         // Set obfuscation info
         if (response.data.obfuscationInfo) {
           setObfuscationInfo(response.data.obfuscationInfo);
+        }
+
+        // Handle certificate information
+        if (response.data.certificateInfo) {
+          setCertificateInfo(response.data.certificateInfo);
         }
 
         // Handle JSON output
@@ -174,38 +193,6 @@ function PasspointProfileConverter() {
     } finally {
       setLoadingConvert(false);
     }
-  };
-
-  // Function to copy current output to clipboard
-  const copyToClipboard = () => {
-    const content = showFormat === 'yaml' ? yamlOutput : 
-                   showFormat === 'json' ? jsonOutput : 
-                   originalDataOutput;
-    
-    navigator.clipboard.writeText(content)
-      .then(() => alert(`${showFormat.toUpperCase()} copied to clipboard!`))
-      .catch(err => console.error('Failed to copy: ', err));
-  };
-
-  // Function to download current output as file
-  const downloadFile = () => {
-    const content = showFormat === 'yaml' ? yamlOutput : 
-                   showFormat === 'json' ? jsonOutput : 
-                   originalDataOutput;
-    
-    const fileType = showFormat === 'json' || showFormat === 'original' ? 'application/json' : 'text/yaml';
-    const fileExtension = showFormat === 'json' || showFormat === 'original' ? 'json' : 'yml';
-
-    const blob = new Blob([content], { type: fileType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = uploadedFileMeta ? 
-                 `${uploadedFileMeta.fileName.split('.')[0]}_${fileExtension}` : 
-                 `passpoint_profile.${fileExtension}`;
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -330,6 +317,32 @@ function PasspointProfileConverter() {
               </Select>
             </FormControl>
             
+            <Typography variant="subtitle1" gutterBottom>
+              Step 4: Choose Certificate Display Mode
+            </Typography>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="cert-handling-label">Certificate Display</InputLabel>
+              <Select
+                labelId="cert-handling-label"
+                value={certHandling}
+                label="Certificate Display"
+                onChange={(e) => setCertHandling(e.target.value)}
+              >
+                {Object.entries(certHandlingModes).map(([mode, description]) => (
+                  <MenuItem key={mode} value={mode}>
+                    <Box>
+                      <Typography variant="body1" sx={{ fontWeight: mode === 'preserve' ? 'bold' : 'normal' }}>
+                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {description}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
             {obfuscationLevel !== 'none' && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">
@@ -350,7 +363,7 @@ function PasspointProfileConverter() {
         {uploadedFileMeta && (
            <Box sx={{ my: 3 }}>
             <Typography variant="subtitle1" gutterBottom>
-              Step 4: Convert File to YAML/JSON
+              Step 5: Convert File to YAML/JSON
             </Typography>
             <Button 
               variant="contained" 
@@ -404,54 +417,16 @@ function PasspointProfileConverter() {
               </Alert>
             )}
             
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <ToggleButtonGroup
-                value={showFormat}
-                exclusive
-                onChange={(event, newFormat) => {
-                  if (newFormat !== null) {
-                    setShowFormat(newFormat);
-                  }
-                }}
-                aria-label="output format"
-              >
-                <ToggleButton value="yaml" aria-label="yaml format">
-                  YAML (Full)
-                </ToggleButton>
-                <ToggleButton value="json" aria-label="json format">
-                  JSON (Full)
-                </ToggleButton>
-                <ToggleButton value="original" aria-label="original format">
-                  Original
-                </ToggleButton>
-              </ToggleButtonGroup>
-              
-              <Box>
-                <Button onClick={copyToClipboard} sx={{ mr: 1 }}>
-                  Copy to Clipboard
-                </Button>
-                <Button onClick={downloadFile} variant="outlined">
-                  Download {showFormat.toUpperCase()}
-                </Button>
-              </Box>
-            </Box>
-            
-            <Paper variant="outlined" sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
-              <TextField
-                multiline
-                fullWidth
-                rows={20}
-                value={
-                  showFormat === 'yaml' ? yamlOutput : 
-                  showFormat === 'json' ? jsonOutput : 
-                  originalDataOutput
-                }
-                InputProps={{
-                  readOnly: true,
-                  style: { fontFamily: 'monospace' }
-                }}
-              />
-            </Paper>
+            <ConversionCompareViewer
+              yamlData={yamlOutput}
+              jsonData={jsonOutput}
+              originalData={originalDataOutput}
+              obfuscationInfo={obfuscationInfo}
+              certificateInfo={certificateInfo}
+              fileType={uploadedFileMeta?.fileName?.split('.').pop() || 'txt'}
+              onCertHandlingChange={handleCertHandlingChange}
+              currentCertHandling={certHandling}
+            />
           </Paper>
         )}
       </Paper>
