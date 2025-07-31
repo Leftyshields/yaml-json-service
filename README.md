@@ -98,56 +98,41 @@ docker-compose down
 **Access the containerized application:**
 - Application: http://localhost:6001
 
-## 🚢 Deployment to Digital Ocean
+## 🚢 Deployment
 
-### Method 1: Automated Deployment with GitHub Actions
+### GitHub Actions Deployment (Recommended)
+
+This repository includes automated GitHub Actions deployment to Digital Ocean.
 
 1. **Create a Digital Ocean Droplet**
-   - Create a new Ubuntu droplet
-   - Install Docker and Docker Compose on the droplet using the provided setup script:
-     ```bash
-     ./scripts/setup-droplet.sh
-     ```
+   - Create a new Ubuntu droplet on Digital Ocean
+   - Note the droplet's IP address
 
 2. **Set up GitHub Secrets**
-   Go to your GitHub repository Settings > Secrets > Actions and add the following secrets:
+   Go to your GitHub repository Settings > Secrets > Actions and add:
    - `DOCKER_USERNAME`: Your Docker Hub username
    - `DOCKER_PASSWORD`: Your Docker Hub password
-   - `DROPLET_IP`: The IP address of your Digital Ocean droplet
+   - `DROPLET_IP`: Your Digital Ocean droplet IP address
    - `SSH_USER`: SSH username (usually 'root')
-   - `SSH_PRIVATE_KEY`: The private SSH key for accessing your droplet
+   - `SSH_PRIVATE_KEY`: Your private SSH key for the droplet
 
-3. **Configure GitHub Actions**
-   - The workflow file is already configured in `.github/workflows/deploy.yml`
-   - It will build the Docker image, push to Docker Hub, and deploy to your droplet
-   - Commits to the main branch will automatically trigger deployment
+3. **Deploy**
+   - Push changes to the `main` branch
+   - GitHub Actions will automatically build and deploy to your droplet
+   - The application will be available at `http://your-droplet-ip`
 
-4. **Initial Server Setup**
-   Connect to your Digital Ocean server and prepare it:
-   ```bash
-   # Install Docker and Docker Compose
-   curl -L https://raw.githubusercontent.com/Leftyshields/yaml-json-service/main/scripts/setup-droplet.sh > setup-droplet.sh
-   chmod +x setup-droplet.sh
-   ./setup-droplet.sh
-   
-   # Initialize the application
-   curl -L https://raw.githubusercontent.com/Leftyshields/yaml-json-service/main/scripts/init-app.sh > init-app.sh
-   chmod +x init-app.sh
-   ./init-app.sh your-docker-username
-   ```
+### Manual Deployment
 
-### Method 2: Manual Deployment
+If you prefer manual deployment:
 
 ```bash
-# Run the deploy script locally
-./deploy.sh
-```
+# Build and push Docker image
+docker build -t your-username/yaml-json-service .
+docker push your-username/yaml-json-service
 
-You'll need to set the following environment variables:
-- `DIGITALOCEAN_ACCESS_TOKEN` or `DROPLET_IP`
-- `DOCKER_USERNAME` and `DOCKER_PASSWORD` (for pushing to Docker Hub)
-- `SSH_PRIVATE_KEY` (for connecting to your droplet)
-- `SSH_USER` (usually 'root')
+# Deploy to your server
+ssh root@your-droplet-ip "docker pull your-username/yaml-json-service && docker stop yaml-json-service || true && docker rm yaml-json-service || true && docker run -d --name yaml-json-service -p 80:6001 --restart unless-stopped your-username/yaml-json-service"
+```
 
 ## 🛡️ Security Considerations
 

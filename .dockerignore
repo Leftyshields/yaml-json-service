@@ -47,11 +47,6 @@ src/config/uploads/*
 .dockerignore
 Dockerfile*
 
-# Firebase
-.firebase/
-firebase-debug.log
-.firebaserc
-
 # Testing
 coverage/
 

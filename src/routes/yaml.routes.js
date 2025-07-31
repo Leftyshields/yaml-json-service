@@ -187,7 +187,7 @@ router.get('/config', (req, res) => {
 // Set up storage for uploaded files
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Use /tmp for Firebase Functions, local uploads for development
+    // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
       : path.join(__dirname, '../config/uploads');
@@ -264,7 +264,7 @@ router.post('/test-upload', (req, res) => {
   console.log('[SERVER /test-upload] Content-Type:', req.headers['content-type']);
   console.log('[SERVER /test-upload] Content-Length:', req.headers['content-length']);
   console.log('[SERVER /test-upload] User-Agent:', req.headers['user-agent']);
-  console.log('[SERVER /test-upload] Environment:', process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local');
+  console.log('[SERVER /test-upload] Environment:', process.env.FUNCTION_TARGET ? 'Local' : 'Local');
 
   // Use multer with memory storage for testing
   const testUpload = multer({ 
@@ -278,7 +278,7 @@ router.post('/test-upload', (req, res) => {
   testUpload(req, res, (err) => {
     const result = {
       timestamp: new Date().toISOString(),
-      environment: process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local',
+      environment: process.env.FUNCTION_TARGET ? 'Local' : 'Local',
       success: false,
       details: {}
     };
@@ -308,7 +308,7 @@ router.post('/test-upload', (req, res) => {
       const timestamp = Date.now();
       const fileName = `test-${timestamp}-${req.file.originalname}`;
       
-      const uploadDir = process.env.FUNCTION_TARGET ? '/tmp' : path.join(__dirname, '..', 'config', 'uploads');
+      const uploadDir = path.join(__dirname, '..', 'config', 'uploads');
       const filePath = path.join(uploadDir, fileName);
       
       // Ensure directory exists
@@ -358,11 +358,11 @@ router.post('/test-upload', (req, res) => {
 router.get('/upload-health', (req, res) => {
   const health = {
     timestamp: new Date().toISOString(),
-    environment: process.env.FUNCTION_TARGET ? 'Firebase Functions' : 'Local',
+    environment: process.env.FUNCTION_TARGET ? 'Local' : 'Local',
     multerVersion: require('multer/package.json').version,
     nodeVersion: process.version,
     memoryUsage: process.memoryUsage(),
-    uploadDir: process.env.FUNCTION_TARGET ? '/tmp' : path.join(__dirname, '..', 'config', 'uploads'),
+    uploadDir: path.join(__dirname, '..', 'config', 'uploads'),
     tmpDirExists: fs.existsSync('/tmp'),
     tmpDirWritable: (() => {
       try {
@@ -397,7 +397,7 @@ router.options('/upload', (req, res) => {
   res.status(200).send();
 });
 
-// Alternative upload route for Firebase Functions compatibility
+// Alternative upload route for Local compatibility
 router.post('/upload', (req, res) => {
   // Set CORS headers specifically for upload
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
@@ -409,7 +409,7 @@ router.post('/upload', (req, res) => {
   console.log('[SERVER /upload] Content-Length:', req.headers['content-length']);
   console.log('[SERVER /upload] Origin:', req.headers.origin);
 
-  // For Firebase Functions, use multer with memory storage (more reliable than busboy)
+  // For Local, use multer with memory storage (more reliable than busboy)
   const memoryUpload = multer({ 
     storage: multer.memoryStorage(),
     limits: { 
@@ -446,7 +446,7 @@ router.post('/upload', (req, res) => {
       const timestamp = Date.now();
       const fileName = `${timestamp}-${req.file.originalname}`;
       
-      // Use /tmp for Firebase Functions, local uploads for development
+      // Use local uploads directory
       const uploadDir = process.env.FUNCTION_TARGET 
         ? '/tmp' 
         : path.join(__dirname, '..', 'config', 'uploads');
@@ -495,7 +495,7 @@ function cleanupUploadedFile(fullPath) {
 // Utility function to clean up old files (older than 1 hour)
 function cleanupOldFiles() {
   try {
-    // Use /tmp for Firebase Functions, local uploads for development
+    // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
       : path.join(__dirname, '..', 'config', 'uploads');
@@ -549,7 +549,7 @@ router.post('/convert-raw', async (req, res) => {
       return res.status(400).json({ error: 'No file path provided' });
     }
     
-    // Use /tmp for Firebase Functions, local uploads for development
+    // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
       : path.join(__dirname, '..', 'config', 'uploads');
@@ -685,7 +685,7 @@ router.post('/convert', async (req, res) => {
     
     console.log('[SERVER /convert] Obfuscation level requested:', obfuscationLevel);
     
-    // Use /tmp for Firebase Functions, local uploads for development
+    // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
       : path.join(__dirname, '..', 'config', 'uploads');
@@ -1853,7 +1853,7 @@ router.get('/file-status/:filename', (req, res) => {
     return res.status(400).json({ error: 'No filename provided' });
   }
   
-  // Use /tmp for Firebase Functions, local uploads for development
+  // Use local uploads directory
   const uploadDir = process.env.FUNCTION_TARGET 
     ? '/tmp' 
     : path.join(__dirname, '..', 'config', 'uploads');
@@ -1884,7 +1884,7 @@ router.get('/file-status/:filename', (req, res) => {
 // Manual cleanup endpoint for administrators
 router.delete('/cleanup', (req, res) => {
   try {
-    // Use /tmp for Firebase Functions, local uploads for development
+    // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
       : path.join(__dirname, '..', 'config', 'uploads');
