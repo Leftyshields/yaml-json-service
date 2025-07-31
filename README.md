@@ -46,7 +46,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 ## 🔧 Live Demo
 
 The application is deployed on Digital Ocean and available at:
-- [http://your-droplet-ip](http://your-droplet-ip)
+- https://wba-app-ougq3.ondigitalocean.app/
 
 ## 🛠️ Development Setup
 
@@ -119,7 +119,7 @@ This repository includes automated GitHub Actions deployment to Digital Ocean.
 3. **Deploy**
    - Push changes to the `main` branch
    - GitHub Actions will automatically build and deploy to your droplet
-   - The application will be available at `http://your-droplet-ip`
+   - The application is available at `https://wba-app-ougq3.ondigitalocean.app/`
 
 ### Manual Deployment
 
