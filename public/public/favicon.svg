@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <style>
+      .wifi-signal { fill: #0066cc; }
+      .wifi-bg { fill: #ffffff; }
+    </style>
+  </defs>
+  <rect class="wifi-bg" width="32" height="32" rx="4"/>
+  <g class="wifi-signal">
+    <!-- Outer arc -->
+    <path d="M4 20c6.627-6.627 17.373-6.627 24 0l-2.828 2.828c-4.9-4.9-12.444-4.9-17.344 0L4 20z" opacity="0.3"/>
+    <!-- Middle arc -->
+    <path d="M8 24c3.314-3.314 8.686-3.314 12 0l-2.828 2.828c-1.562-1.562-4.682-1.562-6.244 0L8 24z" opacity="0.6"/>
+    <!-- Inner arc -->
+    <path d="M12 28c1.105-1.105 2.895-1.105 4 0l-2 2-2-2z"/>
+    <!-- Center dot -->
+    <circle cx="16" cy="29" r="1.5"/>
+  </g>
+</svg>
