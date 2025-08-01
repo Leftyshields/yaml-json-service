@@ -1,19 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <defs>
     <style>
-      .wifi-signal { fill: #0066cc; }
-      .wifi-bg { fill: #ffffff; }
+      .blue { fill: #2563eb; }
+      .green { fill: #10b981; }
+      .white { fill: #ffffff; }
     </style>
   </defs>
-  <rect class="wifi-bg" width="32" height="32" rx="4"/>
-  <g class="wifi-signal">
-    <!-- Outer arc -->
-    <path d="M4 20c6.627-6.627 17.373-6.627 24 0l-2.828 2.828c-4.9-4.9-12.444-4.9-17.344 0L4 20z" opacity="0.3"/>
-    <!-- Middle arc -->
-    <path d="M8 24c3.314-3.314 8.686-3.314 12 0l-2.828 2.828c-1.562-1.562-4.682-1.562-6.244 0L8 24z" opacity="0.6"/>
-    <!-- Inner arc -->
-    <path d="M12 28c1.105-1.105 2.895-1.105 4 0l-2 2-2-2z"/>
-    <!-- Center dot -->
-    <circle cx="16" cy="29" r="1.5"/>
-  </g>
+  <circle class="white" cx="16" cy="16" r="16"/>
+  <!-- Blue curved elements -->
+  <path class="blue" d="M6 16c0-5.5 4.5-10 10-10 2.8 0 5.3 1.1 7.1 2.9L20 12c-1.1-1.1-2.6-1.8-4.2-1.8-3.3 0-6 2.7-6 6s2.7 6 6 6c1.6 0 3.1-0.7 4.2-1.8l3.1 3.1C21.3 24.9 18.8 26 16 26c-5.5 0-10-4.5-10-10z"/>
+  <path class="blue" d="M22 8c2.2 0 4 1.8 4 4s-1.8 4-4 4-4-1.8-4-4 1.8-4 4-4z"/>
+  <!-- Green curved elements -->
+  <path class="green" d="M26 16c0 5.5-4.5 10-10 10-2.8 0-5.3-1.1-7.1-2.9L12 20c1.1 1.1 2.6 1.8 4.2 1.8 3.3 0 6-2.7 6-6s-2.7-6-6-6c-1.6 0-3.1 0.7-4.2 1.8L8.9 8.9C10.7 7.1 13.2 6 16 6c5.5 0 10 4.5 10 10z"/>
+  <path class="green" d="M10 24c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
 </svg>
