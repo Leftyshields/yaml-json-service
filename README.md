@@ -1,4 +1,4 @@
-# Passpoint Configuration Editor & Profile Converter
+# Passpoint Profile Converter
 
 A comprehensive web application for editing Passpoint WiFi configurations and converting between various mobile configuration formats (.mobileconfig, .xml, .eap-config, etc.) to YAML/JSON with advanced certificate and password handling.
 
@@ -27,12 +27,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 - **Multi-tab View**: Switch between YAML, JSON, and original data views
 - **Copy & Download**: One-click copy to clipboard and file downloads with HTTP fallback support
 
-### Configuration Editor  
-- **Interactive Forms**: Dynamic form generation from YAML schema
-- **Field Validation**: Real-time validation with helpful error messages
-- **Export Options**: Download as YAML or JSON
-- **File Upload**: Load existing configurations for editing
-- **Schema-driven**: Flexible schema-based field rendering
+
 
 ### Technical Features
 - **Certificate Processing**: Backend certificate detection and transformation with metadata extraction
