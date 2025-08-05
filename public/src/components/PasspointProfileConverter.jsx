@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 // Removed: yaml, plist, xml2js imports as this logic moves to backend
 import ConversionCompareViewer from './ConversionCompareViewer';
+import AlertDisplay from './AlertDisplay';
 
 function PasspointProfileConverter() {
   const [selectedFile, setSelectedFile] = useState(null); // Store the File object for upload
@@ -34,6 +35,7 @@ function PasspointProfileConverter() {
   const [loadingConvert, setLoadingConvert] = useState(false);
   const [obfuscationLevel, setObfuscationLevel] = useState('none'); // Password obfuscation level
   const [certHandling, setCertHandling] = useState('preserve'); // Certificate handling mode
+  const [alerts, setAlerts] = useState([]); // Store alerts from file processing
 
   // Obfuscation level options
   const obfuscationLevels = {
@@ -61,6 +63,7 @@ function PasspointProfileConverter() {
     if (file) {
       setSelectedFile(file);
       setError(null); // Clear any previous errors
+      setAlerts([]); // Clear any previous alerts
     }
   };
 
@@ -98,6 +101,14 @@ function PasspointProfileConverter() {
         fileName: response.data.fileName,
       });
 
+      // Handle alerts if present in upload response
+      if (response.data.alerts && Array.isArray(response.data.alerts)) {
+        setAlerts(response.data.alerts);
+        console.log('Alerts received from upload:', response.data.alerts);
+      } else {
+        setAlerts([]); // Clear any previous alerts
+      }
+
       console.log('File uploaded successfully:', response.data);
       // Don't automatically convert - let user trigger conversion manually
       
@@ -127,6 +138,14 @@ function PasspointProfileConverter() {
       });
 
       console.log('Conversion response:', response.data);
+
+      // Handle alerts if present
+      if (response.data.alerts && Array.isArray(response.data.alerts)) {
+        setAlerts(response.data.alerts);
+        console.log('Alerts received:', response.data.alerts);
+      } else {
+        setAlerts([]); // Clear any previous alerts
+      }
 
       // Check if we received the expected structured data
       if (response.data && typeof response.data === 'object') {
@@ -244,14 +263,11 @@ function PasspointProfileConverter() {
             <Typography component="li" variant="body2">
               <code>.txt/.conf/.cfg</code> - Text-based configuration files
             </Typography>
-            <Typography component="li" variant="body2">
-              <code>.docx/.doc</code> - Word documents with embedded configurations
-            </Typography>
           </Box>
 
           <input
             type="file"
-            accept="*/*,.eap-config,.xml,.mobileconfig,.yml,.yaml,.txt,.json,.docx,.doc,.conf,.cfg,.pem,.crt,.cer,.ovpn,.profile,application/xml,text/xml,text/plain,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept="*/*,.eap-config,.xml,.mobileconfig,.yml,.yaml,.txt,.json,.conf,.cfg,.pem,.crt,.cer,.ovpn,.profile,application/xml,text/xml,text/plain,application/json"
             onChange={handleFileSelection}
             style={{ display: 'none' }}
             id="file-input"
@@ -288,6 +304,15 @@ function PasspointProfileConverter() {
             )}
           </Box>
         )}
+
+        {/* Display alerts if any */}
+        <AlertDisplay 
+          alerts={alerts} 
+          onClose={(index) => {
+            const newAlerts = alerts.filter((_, i) => i !== index);
+            setAlerts(newAlerts);
+          }}
+        />
         
         {uploadedFileMeta && (
            <Box sx={{ my: 3 }}>

@@ -205,14 +205,13 @@ const FileUploader = ({ onFileUploaded }) => {
           <li><code>.yml/.yaml</code> - YAML configuration files</li>
           <li><code>.json</code> - JSON configuration files</li>
           <li><code>.txt/.conf/.cfg</code> - Text-based configuration files</li>
-          <li><code>.docx/.doc</code> - Word documents with embedded configurations</li>
         </ul>
       </div>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <input
             type="file"
-            accept="*/*,.eap-config,.xml,.mobileconfig,.yml,.yaml,.txt,.json,.docx,.doc,.conf,.cfg,.pem,.crt,.cer,.ovpn,.profile,application/xml,text/xml,text/plain,application/json,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept="*/*,.eap-config,.xml,.mobileconfig,.yml,.yaml,.txt,.json,.conf,.cfg,.pem,.crt,.cer,.ovpn,.profile,application/xml,text/xml,text/plain,application/json"
             onChange={handleFileChange}
             className="file-input"
           />

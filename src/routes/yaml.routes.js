@@ -19,6 +19,203 @@ const crypto = require('crypto');
 const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
 const { bufferJsonReplacer, processBinaryData } = require('../utils/binary-helpers'); // Import binary data helpers
 
+/**
+ * Alert system for detecting malformed files and unsupported file types
+ */
+
+// Supported file types and their extensions
+const SUPPORTED_FILE_TYPES = {
+  '.yaml': 'YAML',
+  '.yml': 'YAML', 
+  '.json': 'JSON',
+  '.xml': 'XML',
+  '.plist': 'Property List',
+  '.mobileconfig': 'Mobile Configuration',
+  '.eap-config': 'EAP Configuration',
+  '.txt': 'Text',
+  '.zip': 'ZIP Archive',
+  '.conf': 'Configuration',
+  '.cfg': 'Configuration'
+};
+
+// File type detection patterns
+const FILE_PATTERNS = {
+  xml: /<\?xml|<!DOCTYPE|<\/?[a-zA-Z][^>]*>/,
+  plist: /<!DOCTYPE plist|<\/?plist|<\/?dict|<\/?array|<\/?key|<\/?string|<\/?integer|<\/?real|<\/?true|<\/?false|<\/?data|<\/?date/,
+  json: /^[\s]*[{\[]|"[\w\s]*":/,
+  yaml: /^[\s]*[a-zA-Z][a-zA-Z0-9_-]*:|\n[\s]*[a-zA-Z][a-zA-Z0-9_-]*:/
+};
+
+/**
+ * Detect if a file is malformed based on its content and type
+ * @param {string} filePath - Path to the file
+ * @param {string} fileExtension - File extension
+ * @param {string} fileContent - File content as string
+ * @returns {object} - Alert object if issues found, null otherwise
+ */
+function detectFileIssues(filePath, fileExtension, fileContent) {
+  const alerts = [];
+  const fileName = path.basename(filePath);
+  
+  // Check for unsupported file type
+  if (!SUPPORTED_FILE_TYPES[fileExtension]) {
+    alerts.push({
+      type: 'unsupported_file_type',
+      severity: 'warning',
+      message: `File type "${fileExtension}" is not officially supported. Attempting to process anyway.`,
+      details: {
+        fileName,
+        fileExtension,
+        supportedTypes: Object.keys(SUPPORTED_FILE_TYPES)
+      }
+    });
+  }
+  
+  // Check for binary files - if content contains null bytes or is mostly non-printable, it's likely binary
+  const isBinary = fileContent.includes('\u0000') || 
+                   (fileContent.length > 100 && fileContent.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g)?.length > fileContent.length * 0.1);
+  
+  if (isBinary && (fileExtension === '.mobileconfig' || fileExtension === '.plist')) {
+    // Binary files are expected for mobileconfig/plist, so no alerts needed
+    return null;
+  }
+  
+  // Check for malformed XML/plist content (only for text-based files)
+  if (!isBinary && (fileExtension === '.xml' || fileExtension === '.plist' || fileExtension === '.mobileconfig' || 
+      fileContent.includes('<?xml') || fileContent.includes('<!DOCTYPE plist') || fileContent.includes('<plist'))) {
+    
+    // Improved tag counting logic - exclude XML comments, declarations, and DOCTYPE
+    const openTags = (fileContent.match(/<[^/][^>]*>/g) || []).filter(tag => 
+      !tag.match(/\/\s*$/) && // Not self-closing
+      !tag.match(/^\?xml/) && // Not XML declaration
+      !tag.match(/^!DOCTYPE/) && // Not DOCTYPE declaration
+      !tag.match(/^<!--/) // Not XML comment
+    );
+    const closeTags = (fileContent.match(/<\/[^>]*>/g) || []).length;
+    const selfClosingTags = (fileContent.match(/<[^>]*\/\s*>/g) || []).length;
+    
+    // Count actual opening tags (excluding self-closing tags)
+    const actualOpenTags = openTags.length;
+    
+    // Only flag as malformed if there's a significant mismatch (increased tolerance to 20 for real-world files)
+    if (Math.abs(actualOpenTags - closeTags) > 20) {
+      alerts.push({
+        type: 'malformed_xml',
+        severity: 'error',
+        message: `XML structure appears to be malformed. Found ${actualOpenTags} opening tags and ${closeTags} closing tags.`,
+        details: {
+          fileName,
+          openTags: actualOpenTags,
+          closeTags,
+          selfClosingTags,
+          suggestion: 'Check for missing closing tags or malformed XML structure.'
+        }
+      });
+    }
+    
+    // Check for malformed DOCTYPE declarations
+    if (fileContent.includes('<!DOCTYPE') && !fileContent.includes('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"')) {
+      alerts.push({
+        type: 'malformed_doctype',
+        severity: 'warning',
+        message: 'DOCTYPE declaration appears to be malformed or non-standard.',
+        details: {
+          fileName,
+          suggestion: 'Consider using standard Apple plist DOCTYPE declaration.'
+        }
+      });
+    }
+    
+    // Check for incomplete XML structure
+    if (fileContent.includes('<plist') && !fileContent.includes('</plist>')) {
+      alerts.push({
+        type: 'incomplete_xml',
+        severity: 'error',
+        message: 'XML structure appears to be incomplete. Missing closing </plist> tag.',
+        details: {
+          fileName,
+          suggestion: 'Ensure all XML tags are properly closed.'
+        }
+      });
+    }
+  }
+  
+  // Check for empty or very small files
+  if (fileContent.length < 10) {
+    alerts.push({
+      type: 'empty_file',
+      severity: 'error',
+      message: 'File appears to be empty or contains very little content.',
+      details: {
+        fileName,
+        contentLength: fileContent.length
+      }
+    });
+  }
+  
+  // Check for encoding issues - only flag if we detect actual encoding problems
+  if (fileContent.includes('\uFFFD') || fileContent.includes('\u0000')) {
+    alerts.push({
+      type: 'encoding_issue',
+      severity: 'warning',
+      message: 'File may have encoding issues. Some characters could not be decoded properly.',
+      details: {
+        fileName,
+        suggestion: 'Ensure file is saved with UTF-8 encoding.'
+      }
+    });
+  }
+  
+  // Check for suspicious content patterns (exclude .eap-config files as they are valid XML)
+  if (fileExtension !== '.eap-config' && fileContent.includes('<?xml') && !fileContent.includes('<plist') && !fileContent.includes('<dict>')) {
+    alerts.push({
+      type: 'unexpected_xml_content',
+      severity: 'warning',
+      message: 'File contains XML but doesn\'t appear to be a standard plist format.',
+      details: {
+        fileName,
+        suggestion: 'This may not be a valid plist file. Processing as generic XML.'
+      }
+    });
+  }
+  
+  return alerts.length > 0 ? alerts : null;
+}
+
+/**
+ * Send alerts via WebSocket if any issues are detected
+ * @param {string} streamId - WebSocket stream ID
+ * @param {Array} alerts - Array of alert objects
+ */
+function sendAlerts(streamId, alerts) {
+  if (alerts && alerts.length > 0) {
+    sendConversionUpdate(streamId, {
+      status: 'alerts',
+      alerts,
+      message: `Found ${alerts.length} issue(s) with the uploaded file.`,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Log alerts to console
+    alerts.forEach(alert => {
+      console.log(`[ALERT] ${alert.severity.toUpperCase()}: ${alert.message}`, alert.details);
+    });
+  }
+}
+
+/**
+ * Helper function to add alerts to response objects
+ * @param {object} response - The response object to modify
+ * @param {Array} alerts - Array of alert objects
+ * @returns {object} - Modified response object with alerts
+ */
+function addAlertsToResponse(response, alerts) {
+  if (alerts && alerts.length > 0) {
+    response.alerts = alerts;
+  }
+  return response;
+}
+
 // Password obfuscation utility function
 function obfuscatePasswords(obj, level = 'mask') {
   if (!obj || typeof obj !== 'object') {
@@ -209,7 +406,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowedExtensions = [
       '.yml', '.yaml', '.mobileconfig', '.xml', '.eap-config', 
-      '.docx', '.doc', '.vsd', '.txt', '.json', '.conf', '.cfg',
+      '.txt', '.json', '.conf', '.cfg',
       '.pem', '.crt', '.cer', '.ovpn', '.profile', '.p12', '.pfx',
       '.zip', '.plist', '.config', '.ini', '.properties', '.env',
       '.toml', '.log', '.data', '.bin'  // Added more types
@@ -223,8 +420,6 @@ const upload = multer({
       'application/pkcs7-mime',
       'application/xml',
       'text/xml',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-      'application/msword', // .doc
       'application/vnd.visio', // .vsd
       'application/json',
       'text/json',
@@ -462,13 +657,31 @@ router.post('/upload', (req, res) => {
       fs.writeFileSync(filePath, req.file.buffer);
       console.log('[SERVER /upload] File saved to:', filePath);
 
+      // Detect file issues and send alerts
+      let alerts = null;
+      try {
+        const fileContent = req.file.buffer.toString('utf8');
+        const fileExtension = path.extname(req.file.originalname).toLowerCase();
+        console.log('[SERVER /upload] Checking for file issues...');
+        console.log('[SERVER /upload] File extension:', fileExtension);
+        console.log('[SERVER /upload] Content length:', fileContent.length);
+        alerts = detectFileIssues(filePath, fileExtension, fileContent);
+        if (alerts) {
+          console.log(`[SERVER /upload] Found ${alerts.length} issue(s) with uploaded file:`, alerts);
+        } else {
+          console.log('[SERVER /upload] No issues detected');
+        }
+      } catch (alertError) {
+        console.error('[SERVER /upload] Error detecting file issues:', alertError.message);
+      }
+
       if (!res.headersSent) {
-        return res.status(200).json({ 
+        return res.status(200).json(addAlertsToResponse({ 
           success: true, 
           message: 'File uploaded successfully',
           filePath: fileName,
           fileName: req.file.originalname
-        });
+        }, alerts));
       }
       
     } catch (writeError) {
@@ -702,6 +915,23 @@ router.post('/convert', async (req, res) => {
     const fileExtension = path.extname(fullPath).toLowerCase();
     console.log('[SERVER /convert] File extension determined as:', fileExtension);
     
+    // Read file content for alert detection
+    let fileContent = '';
+    try {
+      fileContent = fs.readFileSync(fullPath, 'utf8');
+      console.log('[SERVER /convert] File content read, length:', fileContent.length);
+    } catch (readError) {
+      console.error('[SERVER /convert] Error reading file:', readError.message);
+      return res.status(500).json({ error: 'Failed to read file content' });
+    }
+    
+    // Detect file issues and send alerts
+    const alerts = detectFileIssues(fullPath, fileExtension, fileContent);
+    if (alerts) {
+      sendAlerts(streamId, alerts);
+      console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the uploaded file`);
+    }
+    
     let parsedData;
     let fileTypeForMapping;
 
@@ -812,7 +1042,7 @@ router.post('/convert', async (req, res) => {
         const originalForJson = processBinaryData(parsedPlist);
         
         // Return the response with processed data as primary YAML
-        return res.json({
+        return res.json(addAlertsToResponse({
           success: true,
           yamlOutput: comprehensiveYamlOutput,         // PRIMARY: Full data (obfuscated if requested)
           comprehensiveYaml: comprehensiveYamlOutput,  // ALSO: Same data for comprehensive tab
@@ -830,7 +1060,7 @@ router.post('/convert', async (req, res) => {
             filteredDataSize: JSON.stringify(mappedData).length,
             note: "Full data is provided in the 'yamlOutput' field with requested obfuscation level"
           }
-        });
+        }, alerts));
         
       } catch (error) {
         console.log('[SERVER /convert] .mobileconfig processing failed:', error.message);
@@ -843,6 +1073,16 @@ router.post('/convert', async (req, res) => {
         // Read file as buffer first to handle encoding issues
         const fileBuffer = fs.readFileSync(fullPath);
         console.log('[SERVER /convert] .xml file data read, length:', fileBuffer.length);
+        
+        // Convert to string for alert detection
+        const fileContent = fileBuffer.toString('utf8');
+        
+        // Detect file issues and send alerts for XML files
+        const alerts = detectFileIssues(fullPath, fileExtension, fileContent);
+        if (alerts) {
+          sendAlerts(streamId, alerts);
+          console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the XML file`);
+        }
         
         // Check if this is actually a binary file
         const isBinary = fileBuffer.some(byte => byte === 0 || (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13));
@@ -1211,44 +1451,110 @@ router.post('/convert', async (req, res) => {
           // Use plist parser instead
           let parsedPlist;
           try {
+            // Clean up the XML content before parsing
+            let cleanContent = xmlString;
+            
+            // Fix malformed DOCTYPE declarations
+            cleanContent = cleanContent.replace(
+              /<!DOCTYPE plist PUBLIC "[^"]*" "[^"]*">/g,
+              '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+            );
+            
+            // Also handle DOCTYPE declarations that span multiple lines
+            cleanContent = cleanContent.replace(
+              /<!DOCTYPE plist PUBLIC "[^"]*" "[^"]*"[^>]*>/g,
+              '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+            );
+            
+            // Remove any BOM or encoding issues
+            cleanContent = cleanContent.replace(/^\uFEFF/, '');
+            
             // Try parsing as text first
-            parsedPlist = plist.parse(xmlString);
+            parsedPlist = plist.parse(cleanContent);
+            console.log('[SERVER /convert] Successfully parsed plist as text');
           } catch (textError) {
             console.log('[SERVER /convert] Text plist failed, trying binary:', textError.message);
-            // If text fails, try binary
-            parsedPlist = plist.parse(fileBuffer);
+            try {
+              // If text fails, try binary
+              const fileBuffer = fs.readFileSync(fullPath);
+              parsedPlist = plist.parse(fileBuffer);
+              console.log('[SERVER /convert] Successfully parsed plist as binary');
+            } catch (binaryError) {
+              console.log('[SERVER /convert] Binary plist also failed, trying XML2JS:', binaryError.message);
+              // If both plist parsers fail, try XML2JS as fallback
+              const parser = new xml2js.Parser({ 
+                explicitArray: false, 
+                mergeAttrs: true,
+                trim: true,
+                ignoreAttrs: false,
+                normalizeTags: false,
+                normalize: false
+              });
+              parsedPlist = await parser.parseStringPromise(xmlString);
+              console.log('[SERVER /convert] Successfully parsed with XML2JS fallback');
+            }
           }
           
-          console.log('[SERVER /convert] Parsed plist structure:', JSON.stringify(parsedPlist, null, 2));
+          console.log('[SERVER /convert] Parsed plist structure keys:', Object.keys(parsedPlist || {}));
+          
+          // Ensure we have valid parsed data
+          if (!parsedPlist || typeof parsedPlist !== 'object' || Object.keys(parsedPlist).length === 0) {
+            console.log('[SERVER /convert] Parsed data is empty, trying XML2JS as primary parser');
+            // If plist parsing returned empty data, try XML2JS as primary parser
+            const parser = new xml2js.Parser({
+              explicitArray: false,
+              mergeAttrs: true,
+              trim: true,
+              ignoreAttrs: false,
+              normalizeTags: false,
+              normalize: false
+            });
+            parsedPlist = await parser.parseStringPromise(fileContent);
+            console.log('[SERVER /convert] XML2JS parsed structure keys:', Object.keys(parsedPlist || {}));
+          }
+          
+          // Ensure we have valid parsed data
+          if (!parsedPlist || typeof parsedPlist !== 'object') {
+            throw new Error('Failed to parse plist data into valid object structure');
+          }
+          
+          // Apply password obfuscation if requested
+          let processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedPlist, obfuscationLevel) : parsedPlist;
+          
+          // Apply certificate handling if requested
+          if (certHandling !== 'preserve') {
+            console.log('[SERVER /convert] Applying certificate handling mode:', certHandling);
+            processedData = certService.processCertificatesInObject(processedData, certHandling);
+          }
           
           // Return full unfiltered plist data as YAML
-          const fullYamlOutput = yaml.dump(parsedPlist, {
+          const fullYamlOutput = yaml.dump(processedData, {
             indent: 2,
             lineWidth: 120,
             noRefs: true,
           });
           
           // Also create filtered version for comparison
-          const mappedData = mapMobileConfigToYaml(parsedPlist);
+          const mappedData = mapMobileConfigToYaml(processedData);
           const filteredYamlOutput = yaml.dump(mappedData, {
             indent: 2,
             lineWidth: 120,
             noRefs: true,
           });
           
-          return res.json({
+          return res.json(addAlertsToResponse({
             success: true,
             yamlOutput: fullYamlOutput,              // PRIMARY: Full unfiltered data (frontend expects yamlOutput)
             comprehensiveYaml: fullYamlOutput,       // ALSO: Same data for comprehensive tab
             filteredYaml: filteredYamlOutput,        // SECONDARY: Filtered version
-            jsonOutput: JSON.stringify(parsedPlist, null, 2), // JSON format for JSON tab
-            originalData: parsedPlist,
+            jsonOutput: JSON.stringify(processedData, null, 2), // JSON format for JSON tab
+            originalData: processedData,
             fileType: 'plist-in-xml',
             mappingInfo: {
               filtered: false,
               note: "Full unfiltered plist data is provided in the 'yamlOutput' field"
             }
-          });
+          }, alerts));
         }
         
         // Check if file contains valid XML content (more lenient check)
@@ -1357,7 +1663,7 @@ router.post('/convert', async (req, res) => {
         
       } catch (xmlError) {
         console.log('[SERVER /convert] XML parsing failed:', xmlError.message);
-        console.log('[SERVER /convert] XML content preview:', xmlString.substring(0, 200));
+        console.log('[SERVER /convert] XML content preview:', fileContent.substring(0, 200));
         
         // Try as binary plist if XML parsing fails
         try {
@@ -1383,7 +1689,7 @@ router.post('/convert', async (req, res) => {
             noRefs: true,
           });
           
-          return res.json({
+          return res.json(addAlertsToResponse({
             success: true,
             yamlOutput: fullYamlOutput,              // PRIMARY: Full unfiltered data (frontend expects yamlOutput)
             comprehensiveYaml: fullYamlOutput,       // ALSO: Same data for comprehensive tab
@@ -1395,27 +1701,28 @@ router.post('/convert', async (req, res) => {
               filtered: false,
               note: "Full unfiltered binary plist data is provided in the 'yamlOutput' field"
             }
-          });
+          }, alerts));
           
         } catch (plistError) {
           console.log('[SERVER /convert] Plist parsing also failed:', plistError.message);
           
           // Provide more helpful error message with content analysis
-          const firstChars = xmlString.substring(0, 100).replace(/[^\x20-\x7E\n\r\t]/g, '?');
-          const hasXmlTags = xmlString.includes('<') && xmlString.includes('>');
+          const firstChars = fileContent.substring(0, 100).replace(/[^\x20-\x7E\n\r\t]/g, '?');
+          const hasXmlTags = fileContent.includes('<') && fileContent.includes('>');
           const xmlParseErrorShort = xmlError.message.substring(0, 100);
           
           return res.status(400).json({ 
             error: `Unable to parse XML file. XML parsing error: ${xmlParseErrorShort}. File preview: "${firstChars}..."`,
             details: {
-              fileSize: xmlString.length,
+              fileSize: fileContent.length,
               hasXmlTags: hasXmlTags,
               xmlError: xmlError.message,
               plistError: plistError.message,
               suggestion: hasXmlTags ? 
                 "The file contains XML tags but has parsing errors. Check for malformed XML syntax." :
                 "The file doesn't appear to contain standard XML structure."
-            }
+            },
+            alerts: alerts || null
           });
         }
       }
@@ -1423,6 +1730,14 @@ router.post('/convert', async (req, res) => {
     } else if (fileExtension === '.yml' || fileExtension === '.yaml') {
       console.log('[SERVER /convert] --- Processing .yml/.yaml file (converting to JSON) ---');
       const yamlContent = fs.readFileSync(fullPath, 'utf8');
+      
+      // Detect file issues and send alerts for YAML files
+      const alerts = detectFileIssues(fullPath, fileExtension, yamlContent);
+      if (alerts) {
+        sendAlerts(streamId, alerts);
+        console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the YAML file`);
+      }
+      
       const jsonData = yaml.load(yamlContent);
       console.log('[SERVER /convert] YAML to JSON conversion successful.');
       
@@ -1486,7 +1801,7 @@ router.post('/convert', async (req, res) => {
       const yamlOutput = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
       const comprehensiveYaml = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
 
-      return res.json({
+      return res.json(addAlertsToResponse({
         success: true,
         fileType: 'yaml',
         yamlOutput,
@@ -1500,7 +1815,7 @@ router.post('/convert', async (req, res) => {
           applied: obfuscationLevel !== 'none',
           note: obfuscationLevel !== 'none' ? `Passwords obfuscated using '${obfuscationLevel}' method` : 'No obfuscation applied'
         }
-      });
+      }, alerts));
 
     } else if (fileExtension === '.eap-config') {
       console.log('[SERVER /convert] --- Processing .eap-config file ---');
@@ -1572,56 +1887,6 @@ router.post('/convert', async (req, res) => {
         throw error;
       }
 
-    } else if (fileExtension === '.docx') {
-      console.log('[SERVER /convert] --- Processing .docx file ---');
-      
-      try {
-        const fileBuffer = fs.readFileSync(fullPath);
-        console.log('[SERVER /convert] .docx file read, length:', fileBuffer.length);
-        
-        // .docx files are ZIP archives
-        const zip = new AdmZip(fileBuffer);
-        const zipEntries = zip.getEntries();
-        
-        console.log('[SERVER /convert] DOCX contains', zipEntries.length, 'files');
-        
-        // Look for the main document content
-        const documentXml = zip.readAsText('word/document.xml');
-        
-        if (documentXml) {
-          // Try to extract network/configuration data from the document
-          const configMatches = documentXml.match(/<w:t[^>]*>([^<]*(?:SSID|EAP|WiFi|Network|Certificate|Password|Config)[^<]*)<\/w:t>/gi);
-          
-          const extractedData = {
-            documentType: 'docx',
-            extractedNetworkConfig: [],
-            fullDocumentXml: documentXml
-          };
-          
-          if (configMatches) {
-            configMatches.forEach(match => {
-              const textContent = match.replace(/<[^>]*>/g, '');
-              extractedData.extractedNetworkConfig.push(textContent);
-            });
-          }
-          
-          return res.json({
-            success: true,
-            fileType: 'docx',
-            yamlOutput: yaml.dump(extractedData, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
-            comprehensiveYaml: yaml.dump(extractedData, { indent: 2, lineWidth: 120, noRefs: true }),
-            jsonOutput: JSON.stringify(extractedData, null, 2), // JSON format for JSON tab
-            data: extractedData,
-            originalData: 'DOCX document processed'
-          });
-        } else {
-          throw new Error('Could not find document.xml in DOCX file');
-        }
-      } catch (error) {
-        console.log('[SERVER /convert] .docx processing failed:', error.message);
-        throw error;
-      }
-
     } else if (fileExtension === '.txt' || fileExtension === '.conf' || fileExtension === '.cfg') {
       console.log('[SERVER /convert] --- Processing text configuration file ---');
       
@@ -1629,7 +1894,167 @@ router.post('/convert', async (req, res) => {
         const fileContent = fs.readFileSync(fullPath, 'utf8');
         console.log('[SERVER /convert] Text file content read, length:', fileContent.length);
         
-        // Parse as configuration file
+        // Detect file issues and send alerts for text files
+        const alerts = detectFileIssues(fullPath, fileExtension, fileContent);
+        if (alerts) {
+          sendAlerts(streamId, alerts);
+          console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the text file`);
+        }
+        
+        // Check if this is actually XML/plist content in a .txt file
+        if (fileContent.includes('<?xml') || fileContent.includes('<!DOCTYPE plist') || fileContent.includes('<plist')) {
+          console.log('[SERVER /convert] Detected XML/plist content in .txt file, processing as XML');
+          
+          // Use the same XML processing logic as for .xml files
+          if (fileContent.includes('<!DOCTYPE plist') || fileContent.includes('<plist')) {
+            console.log('[SERVER /convert] Detected plist format in .txt file, using plist parser');
+            
+            // Use plist parser instead
+            let parsedPlist;
+            try {
+              // Clean up the XML content before parsing
+              let cleanContent = fileContent;
+              
+              // Fix malformed DOCTYPE declarations
+              cleanContent = cleanContent.replace(
+                /<!DOCTYPE plist PUBLIC "[^"]*" "[^"]*">/g,
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+              );
+              
+              // Also handle DOCTYPE declarations that span multiple lines
+              cleanContent = cleanContent.replace(
+                /<!DOCTYPE plist PUBLIC "[^"]*" "[^"]*"[^>]*>/g,
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+              );
+              
+              // Remove any BOM or encoding issues
+              cleanContent = cleanContent.replace(/^\uFEFF/, '');
+              
+              // Try parsing as text first
+              parsedPlist = plist.parse(cleanContent);
+              console.log('[SERVER /convert] Successfully parsed plist as text');
+            } catch (textError) {
+              console.log('[SERVER /convert] Text plist failed, trying binary:', textError.message);
+              try {
+                // If text fails, try binary
+                const fileBuffer = fs.readFileSync(fullPath);
+                parsedPlist = plist.parse(fileBuffer);
+                console.log('[SERVER /convert] Successfully parsed plist as binary');
+              } catch (binaryError) {
+                console.log('[SERVER /convert] Binary plist also failed, trying XML2JS:', binaryError.message);
+                // If both plist parsers fail, try XML2JS as fallback
+                const parser = new xml2js.Parser({ 
+                  explicitArray: false, 
+                  mergeAttrs: true,
+                  trim: true,
+                  ignoreAttrs: false,
+                  normalizeTags: false,
+                  normalize: false
+                });
+                parsedPlist = await parser.parseStringPromise(fileContent);
+                console.log('[SERVER /convert] Successfully parsed with XML2JS fallback');
+              }
+            }
+            
+            console.log('[SERVER /convert] Parsed plist structure keys:', Object.keys(parsedPlist || {}));
+            
+            // Ensure we have valid parsed data
+            if (!parsedPlist || typeof parsedPlist !== 'object' || Object.keys(parsedPlist).length === 0) {
+              console.log('[SERVER /convert] Parsed data is empty, trying XML2JS as primary parser');
+              // If plist parsing returned empty data, try XML2JS as primary parser
+              const parser = new xml2js.Parser({
+                explicitArray: false,
+                mergeAttrs: true,
+                trim: true,
+                ignoreAttrs: false,
+                normalizeTags: false,
+                normalize: false
+              });
+              parsedPlist = await parser.parseStringPromise(fileContent);
+              console.log('[SERVER /convert] XML2JS parsed structure keys:', Object.keys(parsedPlist || {}));
+            }
+            
+            // Ensure we have valid parsed data
+            if (!parsedPlist || typeof parsedPlist !== 'object') {
+              throw new Error('Failed to parse plist data into valid object structure');
+            }
+            
+            // Apply password obfuscation if requested
+            let processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedPlist, obfuscationLevel) : parsedPlist;
+            
+            // Apply certificate handling if requested
+            if (certHandling !== 'preserve') {
+              console.log('[SERVER /convert] Applying certificate handling mode:', certHandling);
+              processedData = certService.processCertificatesInObject(processedData, certHandling);
+            }
+            
+            // Return full unfiltered plist data as YAML
+            const fullYamlOutput = yaml.dump(processedData, {
+              indent: 2,
+              lineWidth: 120,
+              noRefs: true,
+            });
+            
+            // Also create filtered version for comparison
+            const mappedData = mapMobileConfigToYaml(processedData);
+            const filteredYamlOutput = yaml.dump(mappedData, {
+              indent: 2,
+              lineWidth: 120,
+              noRefs: true,
+            });
+            
+            return res.json(addAlertsToResponse({
+              success: true,
+              yamlOutput: fullYamlOutput,              // PRIMARY: Full unfiltered data (frontend expects yamlOutput)
+              comprehensiveYaml: fullYamlOutput,       // ALSO: Same data for comprehensive tab
+              filteredYaml: filteredYamlOutput,        // SECONDARY: Filtered version
+              jsonOutput: JSON.stringify(processedData, null, 2), // JSON format for JSON tab
+              originalData: processedData,
+              fileType: 'plist-in-txt',
+              mappingInfo: {
+                filtered: false,
+                note: "Full unfiltered plist data is provided in the 'yamlOutput' field"
+              }
+            }, alerts));
+          } else {
+            // Regular XML processing
+            const parser = new xml2js.Parser({ 
+              explicitArray: false, 
+              mergeAttrs: true,
+              trim: true,
+              ignoreAttrs: false,
+              maxAttribs: 1000,
+              maxChildren: 10000,
+              strict: false,
+              normalizeTags: false,
+              normalize: false
+            });
+            
+            const parsedData = await parser.parseStringPromise(fileContent);
+            console.log('[SERVER /convert] XML file parsed successfully from .txt file.');
+            
+            // Apply password obfuscation if requested
+            let processedData = obfuscationLevel !== 'none' ? obfuscatePasswords(parsedData, obfuscationLevel) : parsedData;
+            
+            // Apply certificate handling if requested
+            if (certHandling !== 'preserve') {
+              console.log('[SERVER /convert] Applying certificate handling mode:', certHandling);
+              processedData = certService.processCertificatesInObject(processedData, certHandling);
+            }
+            
+            return res.json(addAlertsToResponse({
+              success: true,
+              fileType: 'xml-in-txt',
+              yamlOutput: yaml.dump(processedData, { indent: 2, lineWidth: 120, noRefs: true }),
+              comprehensiveYaml: yaml.dump(processedData, { indent: 2, lineWidth: 120, noRefs: true }),
+              jsonOutput: JSON.stringify(processedData, null, 2),
+              data: processedData,
+              originalData: processedData
+            }, alerts));
+          }
+        }
+        
+        // If not XML/plist, process as regular text configuration file
         const configData = {
           fileType: fileExtension.replace('.', ''),
           sections: {},
@@ -1671,7 +2096,7 @@ router.post('/convert', async (req, res) => {
           }
         });
         
-        return res.json({
+        return res.json(addAlertsToResponse({
           success: true,
           fileType: fileExtension.replace('.', ''),
           yamlOutput: yaml.dump(configData, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
@@ -1679,7 +2104,7 @@ router.post('/convert', async (req, res) => {
           jsonOutput: JSON.stringify(configData, null, 2), // JSON format for JSON tab
           data: configData,
           originalData: fileContent
-        });
+        }, alerts));
       } catch (error) {
         console.log('[SERVER /convert] Text file processing failed:', error.message);
         throw error;
@@ -1690,9 +2115,17 @@ router.post('/convert', async (req, res) => {
       
       try {
         const fileContent = fs.readFileSync(fullPath, 'utf8');
+        
+        // Detect file issues and send alerts for JSON files
+        const alerts = detectFileIssues(fullPath, fileExtension, fileContent);
+        if (alerts) {
+          sendAlerts(streamId, alerts);
+          console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the JSON file`);
+        }
+        
         const jsonData = JSON.parse(fileContent);
         
-        return res.json({
+        return res.json(addAlertsToResponse({
           success: true,
           fileType: 'json',
           yamlOutput: yaml.dump(jsonData, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
@@ -1700,7 +2133,7 @@ router.post('/convert', async (req, res) => {
           jsonOutput: JSON.stringify(jsonData, null, 2), // JSON format for JSON tab
           data: jsonData,
           originalData: jsonData
-        });
+        }, alerts));
       } catch (error) {
         console.log('[SERVER /convert] JSON processing failed:', error.message);
         throw error;
@@ -1712,6 +2145,16 @@ router.post('/convert', async (req, res) => {
       try {
         const fileBuffer = fs.readFileSync(fullPath);
         console.log('[SERVER /convert] Unknown file data read, length:', fileBuffer.length);
+        
+        // Convert to string for alert detection
+        const fileContent = fileBuffer.toString('utf8');
+        
+        // Detect file issues and send alerts for unknown files
+        const alerts = detectFileIssues(fullPath, fileExtension, fileContent);
+        if (alerts) {
+          sendAlerts(streamId, alerts);
+          console.log(`[SERVER /convert] Found ${alerts.length} issue(s) with the unknown file`);
+        }
         
         // Try multiple parsing strategies for unknown files
         let parsedData = null;
@@ -1763,7 +2206,7 @@ router.post('/convert', async (req, res) => {
           // Successfully parsed the unknown file
           const yamlOutput = yaml.dump(parsedData, { indent: 2, lineWidth: 120, noRefs: true });
           
-          return res.json({
+          return res.json(addAlertsToResponse({
             success: true,
             fileType: `unknown-parsed-as-${conversionMethod}`,
             yamlOutput: yamlOutput,                  // Frontend expects yamlOutput
@@ -1775,7 +2218,7 @@ router.post('/convert', async (req, res) => {
               detectedFormat: conversionMethod,
               note: `Unknown file type successfully parsed as ${conversionMethod.toUpperCase()}`
             }
-          });
+          }, alerts));
         } else {
           // Could not parse - return raw analysis
           const analysisData = {
@@ -1795,7 +2238,7 @@ router.post('/convert', async (req, res) => {
             parseError: errorMessage
           }, { indent: 2, lineWidth: 120, noRefs: true });
           
-          return res.json({
+          return res.json(addAlertsToResponse({
             success: true,
             fileType: 'unknown-binary-analysis',
             yamlOutput: errorYaml,                   // Frontend expects yamlOutput
@@ -1803,7 +2246,7 @@ router.post('/convert', async (req, res) => {
             jsonOutput: JSON.stringify(analysisData, null, 2), // JSON format for JSON tab
             data: analysisData,
             originalData: fileBuffer.toString('utf8', 0, Math.min(fileBuffer.length, 10000))
-          });
+          }, alerts));
         }
       } catch (error) {
         console.log('[SERVER /convert] Unknown file processing failed:', error.message);

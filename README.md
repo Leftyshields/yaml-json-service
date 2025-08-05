@@ -5,7 +5,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 ## ✨ Features
 
 ### Profile Converter
-- **Multi-format Support**: Convert .mobileconfig, .xml, .eap-config, .docx, .json, .yml, .txt, .conf files
+- **Multi-format Support**: Convert .mobileconfig, .xml, .eap-config, .yml/.yaml, .json, .txt/.conf/.cfg files
 - **Smart Parsing**: Automatic detection and parsing of configuration formats including ZIP archives
 - **Certificate Handling**: Advanced certificate detection and display options:
   - **Preserve**: Show original certificate data

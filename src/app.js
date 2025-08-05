@@ -79,6 +79,158 @@ const upload = multer({
   }
 });
 
+// Alert detection function (copied from yaml.routes.js)
+function detectFileIssues(filePath, fileExtension, fileContent) {
+  const alerts = [];
+  const fileName = path.basename(filePath);
+  
+  // Check for unsupported file type
+  const SUPPORTED_FILE_TYPES = {
+    '.yaml': 'YAML',
+    '.yml': 'YAML', 
+    '.json': 'JSON',
+    '.xml': 'XML',
+    '.plist': 'Property List',
+    '.mobileconfig': 'Mobile Configuration',
+    '.eap-config': 'EAP Configuration',
+    '.txt': 'Text',
+    '.zip': 'ZIP Archive',
+    '.conf': 'Configuration',
+    '.cfg': 'Configuration'
+  };
+  
+  if (!SUPPORTED_FILE_TYPES[fileExtension]) {
+    alerts.push({
+      type: 'unsupported_file_type',
+      severity: 'warning',
+      message: `File type "${fileExtension}" is not officially supported. Attempting to process anyway.`,
+      details: {
+        fileName,
+        fileExtension,
+        supportedTypes: Object.keys(SUPPORTED_FILE_TYPES)
+      }
+    });
+  }
+  
+  // Check for binary files - if content contains null bytes or is mostly non-printable, it's likely binary
+  const isBinary = fileContent.includes('\u0000') || 
+                   (fileContent.length > 100 && fileContent.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g)?.length > fileContent.length * 0.1);
+  
+  if (isBinary && (fileExtension === '.mobileconfig' || fileExtension === '.plist')) {
+    // Binary files are expected for mobileconfig/plist, so no alerts needed
+    return null;
+  }
+  
+  // Check for malformed XML/plist content (only for text-based files)
+  if (!isBinary && (fileExtension === '.xml' || fileExtension === '.plist' || fileExtension === '.mobileconfig' || 
+      fileContent.includes('<?xml') || fileContent.includes('<!DOCTYPE plist') || fileContent.includes('<plist'))) {
+    
+    // Improved tag counting logic - exclude XML comments, declarations, and DOCTYPE
+    const openTags = (fileContent.match(/<[^/][^>]*>/g) || []).filter(tag => 
+      !tag.match(/\/\s*$/) && // Not self-closing
+      !tag.match(/^\?xml/) && // Not XML declaration
+      !tag.match(/^!DOCTYPE/) && // Not DOCTYPE declaration
+      !tag.match(/^<!--/) // Not XML comment
+    );
+    const closeTags = (fileContent.match(/<\/[^>]*>/g) || []).length;
+    const selfClosingTags = (fileContent.match(/<[^>]*\/\s*>/g) || []).length;
+    
+    // Count actual opening tags (excluding self-closing tags)
+    const actualOpenTags = openTags.length;
+    
+    // Only flag as malformed if there's a significant mismatch (increased tolerance to 20 for real-world files)
+    if (Math.abs(actualOpenTags - closeTags) > 20) {
+      alerts.push({
+        type: 'malformed_xml',
+        severity: 'error',
+        message: `XML structure appears to be malformed. Found ${actualOpenTags} opening tags and ${closeTags} closing tags.`,
+        details: {
+          fileName,
+          openTags: actualOpenTags,
+          closeTags,
+          selfClosingTags,
+          suggestion: 'Check for missing closing tags or malformed XML structure.'
+        }
+      });
+    }
+    
+    // Check for malformed DOCTYPE declarations
+    if (fileContent.includes('<!DOCTYPE') && !fileContent.includes('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"')) {
+      alerts.push({
+        type: 'malformed_doctype',
+        severity: 'warning',
+        message: 'DOCTYPE declaration appears to be malformed or non-standard.',
+        details: {
+          fileName,
+          suggestion: 'Consider using standard Apple plist DOCTYPE declaration.'
+        }
+      });
+    }
+    
+    // Check for incomplete XML structure
+    if (fileContent.includes('<plist') && !fileContent.includes('</plist>')) {
+      alerts.push({
+        type: 'incomplete_xml',
+        severity: 'error',
+        message: 'XML structure appears to be incomplete. Missing closing </plist> tag.',
+        details: {
+          fileName,
+          suggestion: 'Ensure all XML tags are properly closed.'
+        }
+      });
+    }
+  }
+  
+  // Check for empty or very small files
+  if (fileContent.length < 10) {
+    alerts.push({
+      type: 'empty_file',
+      severity: 'error',
+      message: 'File appears to be empty or contains very little content.',
+      details: {
+        fileName,
+        contentLength: fileContent.length
+      }
+    });
+  }
+  
+  // Check for encoding issues - only flag if we detect actual encoding problems
+  if (fileContent.includes('\uFFFD') || fileContent.includes('\u0000')) {
+    alerts.push({
+      type: 'encoding_issue',
+      severity: 'warning',
+      message: 'File may have encoding issues. Some characters could not be decoded properly.',
+      details: {
+        fileName,
+        suggestion: 'Ensure file is saved with UTF-8 encoding.'
+      }
+    });
+  }
+  
+  // Check for suspicious content patterns (exclude .eap-config files as they are valid XML)
+  if (fileExtension !== '.eap-config' && fileContent.includes('<?xml') && !fileContent.includes('<plist') && !fileContent.includes('<dict>')) {
+    alerts.push({
+      type: 'unexpected_xml_content',
+      severity: 'warning',
+      message: 'File contains XML but doesn\'t appear to be a standard plist format.',
+      details: {
+        fileName,
+        suggestion: 'This may not be a valid plist file. Processing as generic XML.'
+      }
+    });
+  }
+  
+  return alerts.length > 0 ? alerts : null;
+}
+
+// Helper function to add alerts to response
+function addAlertsToResponse(response, alerts) {
+  if (alerts && alerts.length > 0) {
+    response.alerts = alerts;
+  }
+  return response;
+}
+
 // UPLOAD ROUTE: Uses Multer for reliable file handling in serverless environments
 app.post('/api/upload', upload.single('yamlFile'), (req, res) => {
   // Set CORS headers for the response
@@ -119,12 +271,30 @@ app.post('/api/upload', upload.single('yamlFile'), (req, res) => {
     fs.writeFileSync(filePath, fileData.buffer);
     console.log(`[UPLOAD] Successfully saved ${uniqueFileName} to disk.`);
     
-    return res.status(200).json({ 
+    // Detect file issues and send alerts
+    let alerts = null;
+    try {
+      const fileContent = fileData.buffer.toString('utf8');
+      const fileExtension = path.extname(fileData.originalname).toLowerCase();
+      console.log('[UPLOAD] Checking for file issues...');
+      console.log('[UPLOAD] File extension:', fileExtension);
+      console.log('[UPLOAD] Content length:', fileContent.length);
+      alerts = detectFileIssues(filePath, fileExtension, fileContent);
+      if (alerts) {
+        console.log(`[UPLOAD] Found ${alerts.length} issue(s) with uploaded file:`, alerts);
+      } else {
+        console.log('[UPLOAD] No issues detected');
+      }
+    } catch (alertError) {
+      console.error('[UPLOAD] Error detecting file issues:', alertError.message);
+    }
+    
+    return res.status(200).json(addAlertsToResponse({ 
       success: true, 
       message: 'File uploaded successfully', 
-      filePath: filePath, 
+      filePath: uniqueFileName, // Return just the filename, not the full path
       fileName: fileData.originalname 
-    });
+    }, alerts));
   } catch (err) {
     console.error('[UPLOAD] Error processing upload:', err);
     return res.status(500).json({ 
