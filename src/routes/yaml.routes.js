@@ -278,6 +278,12 @@ async function processEapConfigFromBuffer(fileContent, obfuscationLevel, certHan
       processedResult = obfuscatePasswords(result, obfuscationLevel);
     }
     
+    // Apply certificate handling if requested
+    if (certHandling && certHandling !== 'preserve') {
+      console.log('[processEapConfigFromBuffer] Applying certificate handling mode:', certHandling);
+      processedResult = certService.processCertificatesInObject(processedResult, certHandling);
+    }
+    
     // Convert to YAML and JSON
     const yaml = require('js-yaml');
     const yamlContent = yaml.dump(processedResult, { 
@@ -359,6 +365,12 @@ async function processPlistFromBuffer(fileContent, obfuscationLevel, certHandlin
       processedResult = obfuscatePasswords(parsedData, obfuscationLevel);
     }
     
+    // Apply certificate handling if requested
+    if (certHandling && certHandling !== 'preserve') {
+      console.log('[processPlistFromBuffer] Applying certificate handling mode:', certHandling);
+      processedResult = certService.processCertificatesInObject(processedResult, certHandling);
+    }
+    
     // Convert to YAML and JSON
     const yaml = require('js-yaml');
     const yamlContent = yaml.dump(processedResult, { 
@@ -378,7 +390,7 @@ async function processPlistFromBuffer(fileContent, obfuscationLevel, certHandlin
   }
 }
 
-async function processYamlFromBuffer(fileContent, obfuscationLevel) {
+async function processYamlFromBuffer(fileContent, obfuscationLevel, certHandling) {
   console.log('[processYamlFromBuffer] Processing YAML from buffer');
   
   try {
@@ -389,6 +401,12 @@ async function processYamlFromBuffer(fileContent, obfuscationLevel) {
     let processedResult = parsedData;
     if (obfuscationLevel !== 'none') {
       processedResult = obfuscatePasswords(parsedData, obfuscationLevel);
+    }
+    
+    // Apply certificate handling if requested
+    if (certHandling && certHandling !== 'preserve') {
+      console.log('[processYamlFromBuffer] Applying certificate handling mode:', certHandling);
+      processedResult = certService.processCertificatesInObject(processedResult, certHandling);
     }
     
     // Convert back to YAML and JSON
@@ -841,7 +859,7 @@ router.post('/upload-and-convert', (req, res) => {
         console.log('[SERVER /upload-and-convert] Processing YAML file');
         
         // Parse YAML directly from buffer
-        const result = await processYamlFromBuffer(fileContent, obfuscationLevel);
+        const result = await processYamlFromBuffer(fileContent, obfuscationLevel, certHandling);
         convertedData = result;
         originalData = fileContent;
         

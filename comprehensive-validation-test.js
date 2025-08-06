@@ -214,22 +214,50 @@ function validateResponse(data, fileName, passwordLevel, certMode) {
       }
     }
     
-    // Validate certificate handling
-    if (certMode !== 'preserve' && (data.data.yaml || data.data.json)) {
-      const content = (data.data.yaml + data.data.json).toLowerCase();
+    // Validate certificate handling - CRITICAL: Different modes should produce different outputs
+    if (data.data.yaml || data.data.json) {
+      const yamlContent = (data.data.yaml || '').toLowerCase();
+      const jsonContent = (data.data.json || '').toLowerCase();
+      const combinedContent = yamlContent + ' ' + jsonContent;
+      
+      // Check for base64 certificate patterns (common in all modes currently)
+      const hasBase64Cert = combinedContent.includes('miib') || 
+                           combinedContent.includes('miic') || 
+                           combinedContent.includes('miie') ||
+                           yamlContent.includes('-----begin certificate-----') ||
+                           jsonContent.includes('"data":');
       
       switch (certMode) {
+        case 'preserve':
+          // If file contains certificates, they should be preserved
+          // If file has no certificates, this is not an error
+          break;
+          
         case 'hash':
-          // Should contain SHA-256 hash references
-          if (content.includes('miib') || content.includes('certificate')) {
-            // If we still see raw certificate data, hashing might not have been applied
-            // Note: This is a heuristic check and may need refinement
+          // Only validate if certificates are present in the file
+          if (hasBase64Cert) {
+            // Should NOT show raw base64 certificate data, should show hash references
+            if (!combinedContent.includes('sha256:') && !combinedContent.includes('hash:')) {
+              errors.push('Hash mode showing raw certificate data instead of hash references');
+            }
+            // Should contain hash indicators
+            if (!combinedContent.includes('sha256') && !combinedContent.includes('hash')) {
+              errors.push('Hash mode not showing hash references for certificate data');
+            }
           }
           break;
+          
         case 'obfuscate':
-          // Should contain redacted certificate indicators
-          if (!content.includes('redacted') && !content.includes('obfuscat')) {
-            // Note: This check depends on how obfuscation is implemented
+          // Only validate if certificates are present in the file
+          if (hasBase64Cert) {
+            // Should NOT show raw base64 certificate data, should show obfuscation indicators
+            if (!combinedContent.includes('redacted') && !combinedContent.includes('obfuscat')) {
+              errors.push('Obfuscate mode showing raw certificate data instead of obfuscated placeholders');
+            }
+            // Should contain obfuscation indicators
+            if (!combinedContent.includes('redacted') && !combinedContent.includes('obfuscat')) {
+              errors.push('Obfuscate mode not showing redaction indicators for certificate data');
+            }
           }
           break;
       }
