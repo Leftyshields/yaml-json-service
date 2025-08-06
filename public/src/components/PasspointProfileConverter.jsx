@@ -30,6 +30,7 @@ function PasspointProfileConverter() {
   const [mappingInfo, setMappingInfo] = useState(null); // Store information about data filtering
   const [obfuscationInfo, setObfuscationInfo] = useState(null); // Store obfuscation information
   const [certificateInfo, setCertificateInfo] = useState(null); // Store certificate information
+  const [suggestedFilenames, setSuggestedFilenames] = useState(null); // Store suggested download filenames
   const [error, setError] = useState(null);
   const [loadingUpload, setLoadingUpload] = useState(false);
   const [loadingConvert, setLoadingConvert] = useState(false);
@@ -176,6 +177,11 @@ function PasspointProfileConverter() {
         // Handle certificate information
         if (response.data.certificateInfo) {
           setCertificateInfo(response.data.certificateInfo);
+        }
+
+        // Handle suggested filenames for downloads
+        if (response.data.suggestedFilenames) {
+          setSuggestedFilenames(response.data.suggestedFilenames);
         }
 
         // Handle JSON output
@@ -451,6 +457,7 @@ function PasspointProfileConverter() {
               fileType={uploadedFileMeta?.fileName?.split('.').pop() || 'txt'}
               onCertHandlingChange={handleCertHandlingChange}
               currentCertHandling={certHandling}
+              suggestedFilenames={suggestedFilenames}
             />
           </Paper>
         )}

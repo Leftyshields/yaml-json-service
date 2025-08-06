@@ -216,6 +216,35 @@ function addAlertsToResponse(response, alerts) {
   return response;
 }
 
+// Utility function to generate suggested download filenames based on original filename
+function generateSuggestedFilenames(originalFilename) {
+  if (!originalFilename) {
+    return {
+      yaml: 'conversion_output.yaml',
+      json: 'conversion_output.json',
+      original: 'conversion_output.txt'
+    };
+  }
+  
+  // If filename has timestamp prefix (pattern: numbers-originalname), extract the original part
+  let cleanFilename = originalFilename;
+  const timestampPattern = /^\d+-(.+)$/;
+  const match = originalFilename.match(timestampPattern);
+  if (match) {
+    cleanFilename = match[1]; // Use the part after the timestamp prefix
+  }
+  
+  // Remove extension from original filename
+  const baseName = cleanFilename.replace(/\.[^/.]+$/, '');
+  
+  // Generate suggested filenames with new extensions
+  return {
+    yaml: `${baseName}.yaml`,
+    json: `${baseName}.json`,
+    original: cleanFilename // Keep original extension for original data
+  };
+}
+
 // Password obfuscation utility function
 function obfuscatePasswords(obj, level = 'mask') {
   if (!obj || typeof obj !== 'object') {
@@ -615,7 +644,7 @@ router.post('/upload', (req, res) => {
     }
   }).single('yamlFile');
 
-  memoryUpload(req, res, (err) => {
+  memoryUpload(req, res, async (err) => {
     if (err) {
       console.error('[SERVER /upload] Multer error:', err);
       if (!res.headersSent) {
@@ -656,6 +685,21 @@ router.post('/upload', (req, res) => {
       // Write the file buffer to disk
       fs.writeFileSync(filePath, req.file.buffer);
       console.log('[SERVER /upload] File saved to:', filePath);
+      
+      // Enhanced file verification to prevent race conditions
+      const stats = fs.statSync(filePath);
+      console.log('[SERVER /upload] File size on disk:', stats.size, 'bytes');
+      console.log('[SERVER /upload] Original file size:', req.file.size, 'bytes');
+      
+      // Verify file integrity by reading it back
+      const verificationBuffer = fs.readFileSync(filePath);
+      if (verificationBuffer.length !== req.file.buffer.length) {
+        throw new Error(`File verification failed: size mismatch (written: ${verificationBuffer.length}, expected: ${req.file.buffer.length})`);
+      }
+      
+      // Add a small delay to ensure filesystem operations are completed
+      await new Promise(resolve => setTimeout(resolve, 10));
+      console.log('[SERVER /upload] File verification passed');
 
       // Detect file issues and send alerts
       let alerts = null;
@@ -772,7 +816,38 @@ router.post('/convert-raw', async (req, res) => {
 
     if (!fs.existsSync(fullPath)) {
       console.error('[SERVER /convert-raw] File not found at fullPath:', fullPath);
-      return res.status(404).json({ error: `File not found on server: ${filePath}` });
+      
+      // Race condition fix: Wait and retry for file to become available
+      console.log('[SERVER /convert-raw] Attempting retry for potential race condition...');
+      let retryCount = 0;
+      const maxRetries = 5;
+      const retryDelay = 100; // milliseconds
+      
+      while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        retryCount++;
+        console.log(`[SERVER /convert-raw] Retry ${retryCount}/${maxRetries} - checking for file: ${fullPath}`);
+      }
+      
+      if (!fs.existsSync(fullPath)) {
+        // Final attempt with different upload directory check (dev vs prod compatibility)
+        const alternativeUploadDir = path.join(__dirname, '..', 'config', 'uploads');
+        const alternativePath = path.join(alternativeUploadDir, path.basename(filePath));
+        console.log('[SERVER /convert-raw] Checking alternative path:', alternativePath);
+        
+        if (fs.existsSync(alternativePath)) {
+          console.log('[SERVER /convert-raw] Found file in alternative directory, using:', alternativePath);
+          fullPath = alternativePath;
+        } else {
+          return res.status(404).json({ 
+            error: `File not found on server: ${filePath}`, 
+            details: `Searched paths: ${fullPath}, ${alternativePath}`,
+            troubleshooting: 'This may be a race condition between upload and conversion'
+          });
+        }
+      } else {
+        console.log(`[SERVER /convert-raw] File found after ${retryCount} retries`);
+      }
     }
     
     const fileBuffer = fs.readFileSync(fullPath);
@@ -909,7 +984,38 @@ router.post('/convert', async (req, res) => {
 
     if (!fs.existsSync(fullPath)) {
       console.error('[SERVER /convert] File not found at fullPath:', fullPath);
-      return res.status(404).json({ error: `File not found on server: ${filePath}` });
+      
+      // Race condition fix: Wait and retry for file to become available
+      console.log('[SERVER /convert] Attempting retry for potential race condition...');
+      let retryCount = 0;
+      const maxRetries = 5;
+      const retryDelay = 100; // milliseconds
+      
+      while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        retryCount++;
+        console.log(`[SERVER /convert] Retry ${retryCount}/${maxRetries} - checking for file: ${fullPath}`);
+      }
+      
+      if (!fs.existsSync(fullPath)) {
+        // Final attempt with different upload directory check (dev vs prod compatibility)
+        const alternativeUploadDir = path.join(__dirname, '..', 'config', 'uploads');
+        const alternativePath = path.join(alternativeUploadDir, path.basename(filePath));
+        console.log('[SERVER /convert] Checking alternative path:', alternativePath);
+        
+        if (fs.existsSync(alternativePath)) {
+          console.log('[SERVER /convert] Found file in alternative directory, using:', alternativePath);
+          fullPath = alternativePath;
+        } else {
+          return res.status(404).json({ 
+            error: `File not found on server: ${filePath}`, 
+            details: `Searched paths: ${fullPath}, ${alternativePath}`,
+            troubleshooting: 'This may be a race condition between upload and conversion'
+          });
+        }
+      } else {
+        console.log(`[SERVER /convert] File found after ${retryCount} retries`);
+      }
     }
     
     const fileExtension = path.extname(fullPath).toLowerCase();
@@ -1041,6 +1147,10 @@ router.post('/convert', async (req, res) => {
         const processedForJson = processBinaryData(processedPlist);
         const originalForJson = processBinaryData(parsedPlist);
         
+        // Generate suggested filenames based on original filename
+        const originalFilename = path.basename(filePath);
+        const suggestedFilenames = generateSuggestedFilenames(originalFilename);
+        
         // Return the response with processed data as primary YAML
         return res.json(addAlertsToResponse({
           success: true,
@@ -1049,6 +1159,7 @@ router.post('/convert', async (req, res) => {
           filteredYaml: filteredYamlOutput,            // SECONDARY: Filtered version (also obfuscated)
           jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2), // JSON format for JSON tab with proper binary handling
           originalData: originalForJson,               // Keep original but with proper binary formatting
+          suggestedFilenames: suggestedFilenames,      // Suggested download filenames
           obfuscationInfo: {
             level: obfuscationLevel,
             applied: obfuscationLevel !== 'none',
@@ -1627,6 +1738,10 @@ router.post('/convert', async (req, res) => {
         const processedForJson = processBinaryData(processedData);
         const originalForJson = processBinaryData(parsedData);
         
+        // Generate suggested filenames based on original filename
+        const originalFilename = path.basename(filePath);
+        const suggestedFilenames = generateSuggestedFilenames(originalFilename);
+        
         // Prepare the response data
         const responseData = {
           success: true,
@@ -1635,6 +1750,7 @@ router.post('/convert', async (req, res) => {
           yamlOutput: yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true }), // Frontend expects yamlOutput
           comprehensiveYaml: yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true }),
           jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2), // JSON format for JSON tab with buffer handling
+          suggestedFilenames: suggestedFilenames, // Suggested download filenames
           data: processedData,
           originalData: originalForJson, // Keep original but with proper binary formatting
           certificateInfo: Object.keys(certMetadata).length > 0 ? certMetadata : null // Include certificate metadata
@@ -1801,12 +1917,17 @@ router.post('/convert', async (req, res) => {
       const yamlOutput = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
       const comprehensiveYaml = yaml.dump(processedForJson, { indent: 2, lineWidth: 120, noRefs: true });
 
+      // Generate suggested filenames based on original filename
+      const originalFilename = path.basename(filePath);
+      const suggestedFilenames = generateSuggestedFilenames(originalFilename);
+      
       return res.json(addAlertsToResponse({
         success: true,
         fileType: 'yaml',
         yamlOutput,
         comprehensiveYaml,
         jsonOutput: JSON.stringify(processedForJson, bufferJsonReplacer, 2),
+        suggestedFilenames: suggestedFilenames, // Suggested download filenames
         data: processedData,
         originalData: originalForJson,
         certificateInfo: Object.keys(certMetadata).length > 0 ? certMetadata : null,
@@ -1833,12 +1954,17 @@ router.post('/convert', async (req, res) => {
           const yamlContent = yaml.dump(xmlData, { indent: 2, lineWidth: 120, noRefs: true });
           const jsonContent = JSON.stringify(xmlData, null, 2);
           
+          // Generate suggested filenames based on original filename
+          const originalFilename = path.basename(filePath);
+          const suggestedFilenames = generateSuggestedFilenames(originalFilename);
+          
           return res.json({
             success: true,
             yamlOutput: yamlContent,
             jsonOutput: jsonContent,
             originalData: fileContent,
             comprehensiveYaml: yamlContent,
+            suggestedFilenames: suggestedFilenames,
             mappingInfo: {
               fileType: 'eap-config',
               format: 'xml',
@@ -1867,12 +1993,17 @@ router.post('/convert', async (req, res) => {
           const yamlContent = yaml.dump(configData, { indent: 2, lineWidth: 120, noRefs: true });
           const jsonContent = JSON.stringify(configData, null, 2);
           
+          // Generate suggested filenames based on original filename
+          const originalFilename = path.basename(filePath);
+          const suggestedFilenames = generateSuggestedFilenames(originalFilename);
+          
           return res.json({
             success: true,
             yamlOutput: yamlContent,
             jsonOutput: jsonContent,
             originalData: fileContent,
             comprehensiveYaml: yamlContent,
+            suggestedFilenames: suggestedFilenames,
             mappingInfo: {
               fileType: 'eap-config',
               format: 'key-value',

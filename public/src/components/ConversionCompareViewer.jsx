@@ -38,7 +38,8 @@ const ConversionCompareViewer = ({
   obfuscationInfo,
   fileType,
   onCertHandlingChange,
-  currentCertHandling
+  currentCertHandling,
+  suggestedFilenames // New prop for suggested download filenames
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [yamlView, setYamlView] = useState(yamlData || '');
@@ -125,10 +126,29 @@ const ConversionCompareViewer = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `conversion_output.${type}`;
+    
+    // Use suggested filename if available, otherwise fall back to default
+    let filename = `conversion_output.${type}`;
+    if (suggestedFilenames) {
+      switch (type) {
+        case 'yaml':
+        case 'yml':
+          filename = suggestedFilenames.yaml || filename;
+          break;
+        case 'json':
+          filename = suggestedFilenames.json || filename;
+          break;
+        default:
+          filename = suggestedFilenames.original || filename;
+          break;
+      }
+    }
+    
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url); // Clean up the object URL
   };
 
   // Render the view based on the active tab
