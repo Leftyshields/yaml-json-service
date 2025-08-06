@@ -686,20 +686,21 @@ router.post('/upload', (req, res) => {
       fs.writeFileSync(filePath, req.file.buffer);
       console.log('[SERVER /upload] File saved to:', filePath);
       
-      // Enhanced file verification to prevent race conditions
-      const stats = fs.statSync(filePath);
-      console.log('[SERVER /upload] File size on disk:', stats.size, 'bytes');
-      console.log('[SERVER /upload] Original file size:', req.file.size, 'bytes');
-      
-      // Verify file integrity by reading it back
-      const verificationBuffer = fs.readFileSync(filePath);
-      if (verificationBuffer.length !== req.file.buffer.length) {
-        throw new Error(`File verification failed: size mismatch (written: ${verificationBuffer.length}, expected: ${req.file.buffer.length})`);
-      }
-      
-      // Add a small delay to ensure filesystem operations are completed
-      await new Promise(resolve => setTimeout(resolve, 10));
-      console.log('[SERVER /upload] File verification passed');
+          // Enhanced file verification to prevent race conditions
+    const stats = fs.statSync(filePath);
+    console.log('[SERVER /upload] File size on disk:', stats.size, 'bytes');
+    console.log('[SERVER /upload] Original file size:', req.file.size, 'bytes');
+    
+    // Verify file integrity by reading it back
+    const verificationBuffer = fs.readFileSync(filePath);
+    if (verificationBuffer.length !== req.file.buffer.length) {
+      throw new Error(`File verification failed: size mismatch (written: ${verificationBuffer.length}, expected: ${req.file.buffer.length})`);
+    }
+    
+    // Force filesystem sync and add delay for production stability
+    require('fs').fsyncSync(require('fs').openSync(filePath, 'r'));
+    await new Promise(resolve => setTimeout(resolve, 50)); // Increased delay for production
+    console.log('[SERVER /upload] File verification and sync completed');
 
       // Detect file issues and send alerts
       let alerts = null;
@@ -820,12 +821,20 @@ router.post('/convert-raw', async (req, res) => {
       // Race condition fix: Wait and retry for file to become available
       console.log('[SERVER /convert-raw] Attempting retry for potential race condition...');
       let retryCount = 0;
-      const maxRetries = 8; // Increased for production
-      const baseRetryDelay = 50; // milliseconds
+      const maxRetries = 15; // Significantly increased for production Safari
+      const baseRetryDelay = 25; // Start with shorter delay
       
       while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
-        // Progressive backoff: start fast, then slower
-        const currentDelay = baseRetryDelay * Math.min(retryCount + 1, 4); // 50ms, 100ms, 150ms, 200ms, then 200ms
+        // Aggressive progressive backoff optimized for production
+        let currentDelay;
+        if (retryCount < 3) {
+          currentDelay = baseRetryDelay; // 25ms for first 3 attempts
+        } else if (retryCount < 8) {
+          currentDelay = 50; // 50ms for attempts 4-8
+        } else {
+          currentDelay = 100; // 100ms for final attempts
+        }
+        
         await new Promise(resolve => setTimeout(resolve, currentDelay));
         retryCount++;
         console.log(`[SERVER /convert-raw] Retry ${retryCount}/${maxRetries} (${currentDelay}ms delay) - checking for file: ${fullPath}`);
@@ -990,12 +999,20 @@ router.post('/convert', async (req, res) => {
       // Race condition fix: Wait and retry for file to become available
       console.log('[SERVER /convert] Attempting retry for potential race condition...');
       let retryCount = 0;
-      const maxRetries = 8; // Increased for production
-      const baseRetryDelay = 50; // milliseconds
+      const maxRetries = 15; // Significantly increased for production Safari
+      const baseRetryDelay = 25; // Start with shorter delay
       
       while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
-        // Progressive backoff: start fast, then slower
-        const currentDelay = baseRetryDelay * Math.min(retryCount + 1, 4); // 50ms, 100ms, 150ms, 200ms, then 200ms
+        // Aggressive progressive backoff optimized for production
+        let currentDelay;
+        if (retryCount < 3) {
+          currentDelay = baseRetryDelay; // 25ms for first 3 attempts
+        } else if (retryCount < 8) {
+          currentDelay = 50; // 50ms for attempts 4-8
+        } else {
+          currentDelay = 100; // 100ms for final attempts
+        }
+        
         await new Promise(resolve => setTimeout(resolve, currentDelay));
         retryCount++;
         console.log(`[SERVER /convert] Retry ${retryCount}/${maxRetries} (${currentDelay}ms delay) - checking for file: ${fullPath}`);
