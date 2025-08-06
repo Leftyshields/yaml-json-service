@@ -395,7 +395,7 @@ function PasspointProfileConverter() {
         {uploadedFileMeta && (
            <Box sx={{ my: 3 }}>
             <Typography variant="subtitle1" gutterBottom>
-              Step 3: Choose Password Protection Level
+              Step 4: Choose Password Protection Level
             </Typography>
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel id="obfuscation-level-label">Password Protection</InputLabel>
@@ -421,7 +421,7 @@ function PasspointProfileConverter() {
             </FormControl>
             
             <Typography variant="subtitle1" gutterBottom>
-              Step 4: Choose Certificate Display Mode
+              Step 5: Choose Certificate Display Mode
             </Typography>
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel id="cert-handling-label">Certificate Display</InputLabel>
@@ -463,11 +463,11 @@ function PasspointProfileConverter() {
           </Box>
         )}
 
-        {/* NEW: Atomic Conversion (available after file selection) */}
-        {selectedFile && (
+        {/* Step 3: Direct Conversion (available after upload) */}
+        {uploadedFileMeta && (
           <Box sx={{ my: 3 }}>
             <Typography variant="subtitle1" gutterBottom>
-              🚀 Step 3: Direct Conversion (NEW - No Race Condition)
+              Step 3: Convert File to YAML/JSON
             </Typography>
             
             <Box sx={{ mb: 2 }}>
@@ -475,41 +475,16 @@ function PasspointProfileConverter() {
                 variant="contained" 
                 onClick={handleAtomicConvert} 
                 disabled={loadingConvert || loadingUpload}
-                color="success"
+                color="primary"
                 size="large"
-                sx={{ mr: 1 }}
               >
-                {(loadingConvert || loadingUpload) ? <CircularProgress size={24} /> : `🚀 CONVERT ${selectedFile.name}`}
+                {(loadingConvert || loadingUpload) ? <CircularProgress size={24} /> : `CONVERT ${selectedFile?.name || 'FILE'}`}
               </Button>
-              <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
-                ✅ Recommended: Direct conversion eliminates upload/convert race condition
-              </Typography>
             </Box>
           </Box>
         )}
 
-        {uploadedFileMeta && (
-           <Box sx={{ my: 3 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Step 5: Convert File to YAML/JSON (Legacy)
-            </Typography>
-            
-            {/* Traditional Two-Step Process */}
-            <Box sx={{ opacity: 0.7 }}>
-              <Button 
-                variant="outlined" 
-                onClick={handleFileConvert} 
-                disabled={loadingConvert || !uploadedFileMeta}
-                color="primary"
-              >
-                {loadingConvert ? <CircularProgress size={24} /> : `Convert ${uploadedFileMeta?.fileName || 'Uploaded File'}`}
-              </Button>
-              <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                ⚠️ Legacy: Two-step process (may have race condition) - Use atomic convert above instead
-              </Typography>
-            </Box>
-          </Box>
-        )}
+
 
         {(loadingUpload || loadingConvert) && (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -529,7 +504,7 @@ function PasspointProfileConverter() {
         {(yamlOutput || jsonOutput || originalDataOutput) && !loadingConvert && (
           <Paper variant="outlined" sx={{ mt: 3, p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Step 5: Review and Download File
+              Step 6: Review and Download File
             </Typography>
             
             {obfuscationInfo && obfuscationInfo.applied && (
