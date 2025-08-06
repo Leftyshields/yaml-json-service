@@ -772,7 +772,7 @@ router.post('/upload-and-convert', (req, res) => {
       let convertedData;
       let originalData;
       
-      if (fileExtension === '.eap-config' || fileContent.includes('<EapHostConfig')) {
+      if (fileExtension === '.eap-config' || fileContent.includes('<EapHostConfig') || fileContent.includes('<EAPIdentityProviderList') || fileExtension === '.xml') {
         console.log('[SERVER /upload-and-convert] Processing EAP config file');
         
         // Parse EAP config directly from buffer
@@ -780,7 +780,7 @@ router.post('/upload-and-convert', (req, res) => {
         convertedData = result;
         originalData = fileContent;
         
-      } else if (fileExtension === '.mobileconfig' || fileContent.includes('<?xml') || fileContent.includes('<plist')) {
+      } else if (fileExtension === '.mobileconfig' || (fileContent.includes('<?xml') && fileContent.includes('<plist'))) {
         console.log('[SERVER /upload-and-convert] Processing mobileconfig/plist file');
         
         // Parse plist directly from buffer
