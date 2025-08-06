@@ -152,9 +152,24 @@ function validateResponse(data, fileName, passwordLevel, certMode) {
       errors.push('Invalid or missing original output');
     }
     
-    // Validate JSON is parseable
+    // Validate JSON is parseable and certificate data format
     try {
-      JSON.parse(data.data.json);
+      const jsonData = JSON.parse(data.data.json);
+      
+      // Check for certificate data that should be base64 strings, not numeric arrays
+      const jsonStr = JSON.stringify(jsonData);
+      
+      // Look for certificate fields that might be incorrectly parsed as numeric arrays
+      if (jsonStr.includes('"data":[') && jsonStr.includes('48,')) {
+        // This pattern suggests certificate data was parsed as numeric array instead of base64
+        errors.push('Certificate data in JSON appears as numeric array instead of base64 string');
+      }
+      
+      // Look for PayloadCertificateFileName with Buffer arrays
+      if (jsonStr.includes('"PayloadContent"') && jsonStr.includes('"data":[')) {
+        errors.push('Certificate payload data showing as numeric arrays instead of base64');
+      }
+      
     } catch (e) {
       errors.push('JSON output is not valid JSON');
     }

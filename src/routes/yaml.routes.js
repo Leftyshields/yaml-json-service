@@ -297,12 +297,61 @@ async function processEapConfigFromBuffer(fileContent, obfuscationLevel, certHan
   }
 }
 
+// Function to fix certificate data in plist parsed objects
+function fixPlistCertificateData(obj) {
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
+  
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map(item => fixPlistCertificateData(item));
+  }
+  
+  // Handle Buffer objects (which might be certificate data)
+  if (Buffer.isBuffer(obj)) {
+    // Convert Buffer to base64 string
+    return obj.toString('base64');
+  }
+  
+  // Handle objects
+  const result = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      
+      // Special handling for known certificate fields
+      if (key === 'data' && (Buffer.isBuffer(value) || Array.isArray(value))) {
+        if (Buffer.isBuffer(value)) {
+          result[key] = value.toString('base64');
+        } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
+          // Convert numeric array back to base64
+          result[key] = Buffer.from(value).toString('base64');
+        } else {
+          result[key] = fixPlistCertificateData(value);
+        }
+      } else if (key.toLowerCase().includes('cert') || key.toLowerCase().includes('payload')) {
+        // Recursively process certificate-related fields
+        result[key] = fixPlistCertificateData(value);
+      } else {
+        // Standard recursive processing
+        result[key] = fixPlistCertificateData(value);
+      }
+    }
+  }
+  
+  return result;
+}
+
 async function processPlistFromBuffer(fileContent, obfuscationLevel, certHandling) {
   console.log('[processPlistFromBuffer] Processing plist from buffer');
   
   try {
     const plist = require('plist');
-    const parsedData = plist.parse(fileContent);
+    let parsedData = plist.parse(fileContent);
+    
+    // Fix certificate data - plist library may parse base64 data as Buffer objects
+    parsedData = fixPlistCertificateData(parsedData);
     
     // Apply obfuscation if needed
     let processedResult = parsedData;
