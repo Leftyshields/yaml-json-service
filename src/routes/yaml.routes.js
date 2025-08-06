@@ -216,15 +216,61 @@ function addAlertsToResponse(response, alerts) {
   return response;
 }
 
+// Utility function to fix certificate data that was parsed incorrectly
+function fixCertificateData(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  
+  // Recursively traverse the object
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      
+      // Check if this is a CA element with certificate data
+      if (key === 'CA' && value && typeof value === 'object') {
+        // If the certificate content was parsed as an array of numbers, convert back to string
+        if (value._ && Array.isArray(value._)) {
+          // Convert array of numbers back to base64 string
+          try {
+            value._ = Buffer.from(value._).toString('base64');
+          } catch (err) {
+            console.warn('[fixCertificateData] Failed to convert certificate data:', err.message);
+          }
+        }
+      }
+      
+      // Recursively process nested objects
+      if (typeof value === 'object') {
+        fixCertificateData(value);
+      }
+    }
+  }
+}
+
 // Buffer processing functions for atomic conversion (no file system)
 async function processEapConfigFromBuffer(fileContent, obfuscationLevel, certHandling) {
   console.log('[processEapConfigFromBuffer] Processing EAP config from buffer');
   
   try {
-    // Parse the EAP XML content
+    // Parse the EAP XML content with proper certificate handling
     const xml2js = require('xml2js');
-    const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
+    const parser = new xml2js.Parser({ 
+      explicitArray: false, 
+      mergeAttrs: true,
+      valueProcessors: [
+        // Custom processor to preserve certificate data as strings
+        function(value, name) {
+          // If this looks like certificate data (base64), preserve as string
+          if (typeof value === 'string' && value.length > 100 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+            return value;
+          }
+          return value;
+        }
+      ]
+    });
     const result = await parser.parseStringPromise(fileContent);
+    
+    // Fix certificate data that may have been parsed incorrectly
+    fixCertificateData(result);
     
     // Apply obfuscation if needed
     let processedResult = result;
