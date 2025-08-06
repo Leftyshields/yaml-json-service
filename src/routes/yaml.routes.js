@@ -416,7 +416,7 @@ const storage = multer.diskStorage({
     // Use local uploads directory
     const uploadDir = process.env.FUNCTION_TARGET 
       ? '/tmp' 
-      : path.join(__dirname, '../config/uploads');
+      : path.join(__dirname, '..', 'config', 'uploads');
     
     // Ensure directory exists with proper permissions
     if (!fs.existsSync(uploadDir)) {

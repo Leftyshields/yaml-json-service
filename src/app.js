@@ -66,8 +66,14 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    version: process.env.npm_package_version || '2.1.0-race-fix-aggressive',
+    environment: process.env.NODE_ENV || 'development',
+    raceFixVersion: 'v3-aggressive-15retries-25ms',
+    uploadConfig: {
+      maxRetries: 15,
+      baseDelay: 25,
+      uploadDir: process.env.FUNCTION_TARGET ? '/tmp' : 'config/uploads'
+    }
   });
 });
 
@@ -383,7 +389,11 @@ app.get('/health', cors(corsOptions), (req, res) => {
 });
 
 app.get('/api/health', cors(corsOptions), (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    raceFixVersion: 'v3-aggressive-15retries-25ms'
+  });
 });
 
 // Start server
