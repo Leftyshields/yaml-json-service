@@ -216,6 +216,104 @@ function addAlertsToResponse(response, alerts) {
   return response;
 }
 
+// Buffer processing functions for atomic conversion (no file system)
+async function processEapConfigFromBuffer(fileContent, obfuscationLevel, certHandling) {
+  console.log('[processEapConfigFromBuffer] Processing EAP config from buffer');
+  
+  try {
+    // Parse the EAP XML content
+    const xml2js = require('xml2js');
+    const parser = new xml2js.Parser({ explicitArray: false, mergeAttrs: true });
+    const result = await parser.parseStringPromise(fileContent);
+    
+    // Apply obfuscation if needed
+    let processedResult = result;
+    if (obfuscationLevel !== 'none') {
+      processedResult = obfuscatePasswords(result, obfuscationLevel);
+    }
+    
+    // Convert to YAML and JSON
+    const yaml = require('js-yaml');
+    const yamlContent = yaml.dump(processedResult, { 
+      indent: 2, 
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false
+    });
+    
+    return {
+      yaml: yamlContent,
+      json: JSON.stringify(processedResult, null, 2),
+      original: fileContent
+    };
+  } catch (error) {
+    throw new Error('Failed to process EAP config: ' + error.message);
+  }
+}
+
+async function processPlistFromBuffer(fileContent, obfuscationLevel, certHandling) {
+  console.log('[processPlistFromBuffer] Processing plist from buffer');
+  
+  try {
+    const plist = require('plist');
+    const parsedData = plist.parse(fileContent);
+    
+    // Apply obfuscation if needed
+    let processedResult = parsedData;
+    if (obfuscationLevel !== 'none') {
+      processedResult = obfuscatePasswords(parsedData, obfuscationLevel);
+    }
+    
+    // Convert to YAML and JSON
+    const yaml = require('js-yaml');
+    const yamlContent = yaml.dump(processedResult, { 
+      indent: 2, 
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false
+    });
+    
+    return {
+      yaml: yamlContent,
+      json: JSON.stringify(processedResult, null, 2),
+      original: fileContent
+    };
+  } catch (error) {
+    throw new Error('Failed to process plist: ' + error.message);
+  }
+}
+
+async function processYamlFromBuffer(fileContent, obfuscationLevel) {
+  console.log('[processYamlFromBuffer] Processing YAML from buffer');
+  
+  try {
+    const yaml = require('js-yaml');
+    const parsedData = yaml.load(fileContent);
+    
+    // Apply obfuscation if needed
+    let processedResult = parsedData;
+    if (obfuscationLevel !== 'none') {
+      processedResult = obfuscatePasswords(parsedData, obfuscationLevel);
+    }
+    
+    // Convert back to YAML and JSON
+    const yamlContent = yaml.dump(processedResult, { 
+      indent: 2, 
+      lineWidth: -1,
+      noRefs: true,
+      sortKeys: false
+    });
+    
+    return {
+      yaml: yamlContent,
+      json: JSON.stringify(processedResult, null, 2),
+      original: fileContent
+    };
+  } catch (error) {
+    throw new Error('Failed to process YAML: ' + error.message);
+  }
+}
+
 // Utility function to generate suggested download filenames based on original filename
 function generateSuggestedFilenames(originalFilename) {
   if (!originalFilename) {
@@ -574,6 +672,111 @@ router.post('/test-upload', (req, res) => {
       result.details.writeError = true;
       result.details.errorStack = writeError.stack;
       return res.status(500).json(result);
+    }
+  });
+});
+
+// NEW ARCHITECTURE: Atomic upload + convert (eliminates race condition entirely)
+router.post('/upload-and-convert', (req, res) => {
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  
+  console.log('[SERVER /upload-and-convert] Atomic conversion request received');
+
+  const memoryUpload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { 
+      fileSize: 100 * 1024 * 1024, // 100MB limit
+      fieldSize: 100 * 1024 * 1024,
+      fields: 10,
+      files: 1
+    }
+  }).single('yamlFile');
+
+  memoryUpload(req, res, async (err) => {
+    if (err) {
+      console.error('[SERVER /upload-and-convert] Multer error:', err);
+      return res.status(400).json({ error: 'Upload failed: ' + err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    try {
+      console.log('[SERVER /upload-and-convert] Processing file:', req.file.originalname);
+      
+      // Process directly from memory buffer - NO FILE SYSTEM INTERACTION
+      const fileContent = req.file.buffer.toString('utf8');
+      const fileExtension = path.extname(req.file.originalname).toLowerCase();
+      
+      // Get conversion parameters from request body (parsed from multipart)
+      const obfuscationLevel = req.body.obfuscationLevel || 'none';
+      const certHandling = req.body.certHandling || 'preserve';
+      
+      console.log('[SERVER /upload-and-convert] Obfuscation level:', obfuscationLevel);
+      console.log('[SERVER /upload-and-convert] Cert handling:', certHandling);
+      
+      // Generate suggested filenames
+      const suggestedFilenames = generateSuggestedFilenames(req.file.originalname);
+      
+      // Detect file type and convert directly from memory
+      let convertedData;
+      let originalData;
+      
+      if (fileExtension === '.eap-config' || fileContent.includes('<EapHostConfig')) {
+        console.log('[SERVER /upload-and-convert] Processing EAP config file');
+        
+        // Parse EAP config directly from buffer
+        const result = await processEapConfigFromBuffer(fileContent, obfuscationLevel, certHandling);
+        convertedData = result;
+        originalData = fileContent;
+        
+      } else if (fileExtension === '.mobileconfig' || fileContent.includes('<?xml') || fileContent.includes('<plist')) {
+        console.log('[SERVER /upload-and-convert] Processing mobileconfig/plist file');
+        
+        // Parse plist directly from buffer
+        const result = await processPlistFromBuffer(fileContent, obfuscationLevel, certHandling);
+        convertedData = result;
+        originalData = fileContent;
+        
+      } else if (fileExtension === '.yaml' || fileExtension === '.yml') {
+        console.log('[SERVER /upload-and-convert] Processing YAML file');
+        
+        // Parse YAML directly from buffer
+        const result = await processYamlFromBuffer(fileContent, obfuscationLevel);
+        convertedData = result;
+        originalData = fileContent;
+        
+      } else {
+        throw new Error('Unsupported file type for atomic conversion');
+      }
+      
+      console.log('[SERVER /upload-and-convert] Conversion completed successfully');
+      
+      // Return the complete conversion result
+      return res.status(200).json({
+        success: true,
+        message: 'File converted successfully',
+        originalFilename: req.file.originalname,
+        suggestedFilenames: suggestedFilenames,
+        data: {
+          yaml: convertedData.yaml || convertedData,
+          json: convertedData.json || JSON.stringify(convertedData, null, 2),
+          original: originalData
+        },
+        conversionTime: new Date().toISOString(),
+        raceConditionEliminated: true
+      });
+      
+    } catch (error) {
+      console.error('[SERVER /upload-and-convert] Conversion error:', error);
+      return res.status(500).json({ 
+        error: 'Conversion failed: ' + error.message,
+        originalFilename: req.file?.originalname
+      });
     }
   });
 });

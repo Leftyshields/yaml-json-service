@@ -77,6 +77,78 @@ function PasspointProfileConverter() {
     }
   };
 
+  // NEW ARCHITECTURE: Atomic upload + convert (eliminates race condition)
+  const handleAtomicConvert = async () => {
+    if (!selectedFile) {
+      setError('Please select a file first');
+      return;
+    }
+
+    setLoadingUpload(true);
+    setLoadingConvert(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('yamlFile', selectedFile);
+      formData.append('obfuscationLevel', obfuscationLevel);
+      formData.append('certHandling', certHandling);
+
+      console.log('Starting atomic conversion for:', selectedFile.name);
+
+      const response = await axios.post(`${API_BASE_URL}/api/upload-and-convert`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 second timeout
+      });
+
+      console.log('Atomic conversion response:', response.data);
+
+      if (response.data.success) {
+        // Handle suggested filenames for downloads
+        if (response.data.suggestedFilenames) {
+          setSuggestedFilenames(response.data.suggestedFilenames);
+        }
+
+        // Set conversion data directly
+        if (response.data.data) {
+          setYamlOutput(response.data.data.yaml || 'No YAML conversion available');
+          setComprehensiveYamlOutput(response.data.data.yaml || 'No comprehensive YAML available');
+          setOriginalData(response.data.data.original || '');
+        }
+
+        // Clear alerts since conversion was successful
+        setAlerts([]);
+        
+        // Set upload meta for UI consistency
+        setUploadedFileMeta({
+          filePath: response.data.originalFilename,
+          fileName: response.data.originalFilename,
+        });
+
+        console.log('Atomic conversion completed successfully');
+        
+      } else {
+        throw new Error(response.data.error || 'Conversion failed');
+      }
+
+    } catch (err) {
+      console.error('Atomic conversion failed:', err);
+      
+      // If atomic conversion fails, fall back to the old method
+      console.log('Falling back to traditional upload/convert flow...');
+      setError('Using fallback conversion method...');
+      setTimeout(() => {
+        handleFileUpload();
+      }, 1000);
+      
+    } finally {
+      setLoadingUpload(false);
+      setLoadingConvert(false);
+    }
+  };
+
   // Function to upload the selected file to the backend
   const handleFileUpload = async () => {
     if (!selectedFile) {
@@ -391,19 +463,51 @@ function PasspointProfileConverter() {
           </Box>
         )}
 
+        {/* NEW: Atomic Conversion (available after file selection) */}
+        {selectedFile && (
+          <Box sx={{ my: 3 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              🚀 Step 3: Direct Conversion (NEW - No Race Condition)
+            </Typography>
+            
+            <Box sx={{ mb: 2 }}>
+              <Button 
+                variant="contained" 
+                onClick={handleAtomicConvert} 
+                disabled={loadingConvert || loadingUpload}
+                color="success"
+                size="large"
+                sx={{ mr: 1 }}
+              >
+                {(loadingConvert || loadingUpload) ? <CircularProgress size={24} /> : `🚀 CONVERT ${selectedFile.name}`}
+              </Button>
+              <Typography variant="caption" display="block" sx={{ mt: 1, color: 'success.main' }}>
+                ✅ Recommended: Direct conversion eliminates upload/convert race condition
+              </Typography>
+            </Box>
+          </Box>
+        )}
+
         {uploadedFileMeta && (
            <Box sx={{ my: 3 }}>
             <Typography variant="subtitle1" gutterBottom>
-              Step 5: Convert File to YAML/JSON
+              Step 5: Convert File to YAML/JSON (Legacy)
             </Typography>
-            <Button 
-              variant="contained" 
-              onClick={handleFileConvert} 
-              disabled={loadingConvert || !uploadedFileMeta}
-              color="primary"
-            >
-              {loadingConvert ? <CircularProgress size={24} /> : `Convert ${uploadedFileMeta.fileName}`}
-            </Button>
+            
+            {/* Traditional Two-Step Process */}
+            <Box sx={{ opacity: 0.7 }}>
+              <Button 
+                variant="outlined" 
+                onClick={handleFileConvert} 
+                disabled={loadingConvert || !uploadedFileMeta}
+                color="primary"
+              >
+                {loadingConvert ? <CircularProgress size={24} /> : `Convert ${uploadedFileMeta?.fileName || 'Uploaded File'}`}
+              </Button>
+              <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                ⚠️ Legacy: Two-step process (may have race condition) - Use atomic convert above instead
+              </Typography>
+            </Box>
           </Box>
         )}
 
