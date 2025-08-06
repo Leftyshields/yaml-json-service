@@ -820,13 +820,15 @@ router.post('/convert-raw', async (req, res) => {
       // Race condition fix: Wait and retry for file to become available
       console.log('[SERVER /convert-raw] Attempting retry for potential race condition...');
       let retryCount = 0;
-      const maxRetries = 5;
-      const retryDelay = 100; // milliseconds
+      const maxRetries = 8; // Increased for production
+      const baseRetryDelay = 50; // milliseconds
       
       while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        // Progressive backoff: start fast, then slower
+        const currentDelay = baseRetryDelay * Math.min(retryCount + 1, 4); // 50ms, 100ms, 150ms, 200ms, then 200ms
+        await new Promise(resolve => setTimeout(resolve, currentDelay));
         retryCount++;
-        console.log(`[SERVER /convert-raw] Retry ${retryCount}/${maxRetries} - checking for file: ${fullPath}`);
+        console.log(`[SERVER /convert-raw] Retry ${retryCount}/${maxRetries} (${currentDelay}ms delay) - checking for file: ${fullPath}`);
       }
       
       if (!fs.existsSync(fullPath)) {
@@ -988,13 +990,15 @@ router.post('/convert', async (req, res) => {
       // Race condition fix: Wait and retry for file to become available
       console.log('[SERVER /convert] Attempting retry for potential race condition...');
       let retryCount = 0;
-      const maxRetries = 5;
-      const retryDelay = 100; // milliseconds
+      const maxRetries = 8; // Increased for production
+      const baseRetryDelay = 50; // milliseconds
       
       while (retryCount < maxRetries && !fs.existsSync(fullPath)) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        // Progressive backoff: start fast, then slower
+        const currentDelay = baseRetryDelay * Math.min(retryCount + 1, 4); // 50ms, 100ms, 150ms, 200ms, then 200ms
+        await new Promise(resolve => setTimeout(resolve, currentDelay));
         retryCount++;
-        console.log(`[SERVER /convert] Retry ${retryCount}/${maxRetries} - checking for file: ${fullPath}`);
+        console.log(`[SERVER /convert] Retry ${retryCount}/${maxRetries} (${currentDelay}ms delay) - checking for file: ${fullPath}`);
       }
       
       if (!fs.existsSync(fullPath)) {
