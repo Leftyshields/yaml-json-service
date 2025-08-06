@@ -115,7 +115,8 @@ function PasspointProfileConverter() {
         if (response.data.data) {
           setYamlOutput(response.data.data.yaml || 'No YAML conversion available');
           setComprehensiveYamlOutput(response.data.data.yaml || 'No comprehensive YAML available');
-          setOriginalData(response.data.data.original || '');
+          setJsonOutput(response.data.data.json || 'No JSON conversion available');
+          setOriginalDataOutput(response.data.data.original || '');
         }
 
         // Clear alerts since conversion was successful
