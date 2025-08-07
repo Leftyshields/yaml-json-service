@@ -100,7 +100,7 @@ function detectFileIssues(filePath, fileExtension, fileContent) {
     '.mobileconfig': 'Mobile Configuration',
     '.eap-config': 'EAP Configuration',
     '.txt': 'Text',
-    '.zip': 'ZIP Archive',
+
     '.conf': 'Configuration',
     '.cfg': 'Configuration'
   };

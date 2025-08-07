@@ -14,7 +14,7 @@ const { mapToYamlSchema } = require('../services/mapping.service'); // Import th
 const certService = require('../services/cert.service'); // Import the certificate service
 const { v4: uuidv4 } = require('uuid');
 const { sendConversionUpdate } = require('../services/websocket.service'); // Import WebSocket service
-const AdmZip = require('adm-zip');
+
 const crypto = require('crypto');
 const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
 const { bufferJsonReplacer, processBinaryData } = require('../utils/binary-helpers'); // Import binary data helpers
@@ -33,7 +33,7 @@ const SUPPORTED_FILE_TYPES = {
   '.mobileconfig': 'Mobile Configuration',
   '.eap-config': 'EAP Configuration',
   '.txt': 'Text',
-  '.zip': 'ZIP Archive',
+  
   '.conf': 'Configuration',
   '.cfg': 'Configuration'
 };
@@ -648,7 +648,7 @@ const upload = multer({
       '.yml', '.yaml', '.mobileconfig', '.xml', '.eap-config', 
       '.txt', '.json', '.conf', '.cfg',
       '.pem', '.crt', '.cer', '.ovpn', '.profile', '.p12', '.pfx',
-      '.zip', '.plist', '.config', '.ini', '.properties', '.env',
+      '.plist', '.config', '.ini', '.properties', '.env',
       '.toml', '.log', '.data', '.bin'  // Added more types
     ];
     const allowedMimeTypes = [
@@ -663,8 +663,7 @@ const upload = multer({
       'application/vnd.visio', // .vsd
       'application/json',
       'text/json',
-      'application/zip',        // ZIP files
-      'application/x-zip-compressed',
+      
       'application/x-plist',    // Plist files
       'application/pkcs12',     // P12/PFX certificates
       'application/x-pkcs12',
@@ -1564,7 +1563,7 @@ router.post('/convert', async (req, res) => {
           // Try to detect file format based on magic bytes
           const firstFourBytes = fileBuffer.slice(0, 4);
           if (firstFourBytes[0] === 0x50 && firstFourBytes[1] === 0x4B) {
-            binaryAnalysis.analysis.possibleFormats.push('ZIP archive');
+    
           }
           if (fileBuffer.slice(0, 8).toString() === 'bplist00') {
             binaryAnalysis.analysis.possibleFormats.push('Binary property list (plist)');
@@ -1594,205 +1593,6 @@ router.post('/convert', async (req, res) => {
             data: binaryAnalysis,
             originalData: `Binary file: ${path.basename(fullPath)} (${fileBuffer.length} bytes)`
           });
-        }
-        
-        // Check if this is actually a ZIP file (Office document or ZIP archive)
-        const zipSignature = fileBuffer.subarray(0, 4);
-        const isZip = zipSignature[0] === 0x50 && zipSignature[1] === 0x4B; // "PK" signature
-        
-        if (isZip) {
-          console.log('[SERVER /convert] Detected ZIP archive format, searching for plist content');
-          
-          try {
-            const zip = new AdmZip(fileBuffer);
-            const zipEntries = zip.getEntries();
-            
-            console.log('[SERVER /convert] ZIP contains', zipEntries.length, 'files');
-            
-            // First pass: Look for obvious plist/mobileconfig files
-            let plistEntry = null;
-            for (const entry of zipEntries) {
-              const entryName = entry.entryName.toLowerCase();
-              console.log('[SERVER /convert] Found file in ZIP:', entry.entryName);
-              
-              if (entryName.endsWith('.plist') || 
-                  entryName.endsWith('.mobileconfig') || 
-                  entryName.includes('passpoint') ||
-                  entryName.includes('wifi') ||
-                  entryName.includes('802dot1x')) {
-                plistEntry = entry;
-                console.log('[SERVER /convert] Found potential plist file in ZIP:', entry.entryName);
-                break;
-              }
-            }
-            
-            // Second pass: Search file contents for plist data
-            if (!plistEntry) {
-              console.log('[SERVER /convert] No obvious plist files found, searching file contents...');
-              
-              for (const entry of zipEntries) {
-                // Skip directories and very large files
-                if (entry.isDirectory || entry.header.size > 1024 * 1024) { // Skip files > 1MB
-                  continue;
-                }
-                
-                try {
-                  const entryData = entry.getData();
-                  const entryText = entryData.toString('utf8', 0, Math.min(entryData.length, 10000)); // Check first 10KB
-                  
-                  // Look for plist signatures in the content
-                  if (entryText.includes('<!DOCTYPE plist') || 
-                      entryText.includes('<plist') ||
-                      entryText.includes('PayloadType') ||
-                      entryText.includes('com.apple.wifi.managed') ||
-                      entryText.includes('EAPClientConfiguration') ||
-                      entryText.includes('RoamingConsortiumOIs')) {
-                    
-                    console.log('[SERVER /convert] Found plist content in file:', entry.entryName);
-                    plistEntry = entry;
-                    break;
-                  }
-                  
-                  // Also check for binary plist signatures
-                  if (entryData.length >= 8) {
-                    const header = entryData.toString('ascii', 0, 8);
-                    if (header === 'bplist00' || header.startsWith('bplist')) {
-                      console.log('[SERVER /convert] Found binary plist in file:', entry.entryName);
-                      plistEntry = entry;
-                      break;
-                    }
-                  }
-                  
-                } catch (contentError) {
-                  // Skip files that can't be read as text
-                  continue;
-                }
-              }
-            }
-            
-            // Third pass: Try XML files that might contain embedded plist data
-            if (!plistEntry) {
-              console.log('[SERVER /convert] Still no plist found, checking XML files for embedded content...');
-              
-              for (const entry of zipEntries) {
-                const entryName = entry.entryName.toLowerCase();
-                
-                if (entryName.endsWith('.xml') && 
-                    !entryName.includes('content_types') &&
-                    !entryName.includes('theme') &&
-                    !entryName.includes('styles') &&
-                    !entryName.includes('settings') &&
-                    !entryName.includes('rels')) {
-                  
-                  try {
-                    const xmlBuffer = entry.getData();
-                    const xmlContent = xmlBuffer.toString('utf8');
-                    
-                    // Look for WiFi/network configuration in XML
-                    if (xmlContent.includes('wifi') ||
-                        xmlContent.includes('network') ||
-                        xmlContent.includes('eap') ||
-                        xmlContent.includes('passpoint') ||
-                        xmlContent.includes('802.1x') ||
-                        xmlContent.includes('certificate') ||
-                        xmlContent.includes('credential')) {
-                      
-                      console.log('[SERVER /convert] Found potential network config in XML:', entry.entryName);
-                      plistEntry = entry;
-                      break;
-                    }
-                  } catch (xmlError) {
-                    continue;
-                  }
-                }
-              }
-            }
-            
-            if (!plistEntry) {
-              return res.status(400).json({ 
-                error: 'No plist, mobileconfig, or network configuration content found in the ZIP archive. Searched through all files but found no Passpoint/WiFi configuration data. Files found: ' + 
-                       zipEntries.map(e => e.entryName).join(', ')
-              });
-            }
-            
-            // Extract the plist file content
-            const plistBuffer = plistEntry.getData();
-            console.log('[SERVER /convert] Extracted potential plist file, size:', plistBuffer.length);
-            
-            // Try to parse as plist
-            let parsedPlist;
-            try {
-              // Try binary plist first
-              parsedPlist = plist.parse(plistBuffer);
-              console.log('[SERVER /convert] Binary plist parsing successful from ZIP');
-            } catch (binaryError) {
-              console.log('[SERVER /convert] Binary plist failed, trying as text:', binaryError.message);
-              
-              try {
-                // Try as text plist
-                const plistText = plistBuffer.toString('utf8');
-                
-                // If it doesn't look like a plist, try to extract plist content from it
-                if (!plistText.includes('<plist') && !plistText.includes('<!DOCTYPE plist')) {
-                  console.log('[SERVER /convert] Not a standard plist, searching for embedded plist content...');
-                  
-                  // Look for plist-like structures in the text
-                  const plistMatch = plistText.match(/<!DOCTYPE plist[\s\S]*?<\/plist>/i);
-                  if (plistMatch) {
-                    console.log('[SERVER /convert] Found embedded plist content');
-                    parsedPlist = plist.parse(plistMatch[0]);
-                  } else {
-                    throw new Error('No valid plist content found in extracted file');
-                  }
-                } else {
-                  parsedPlist = plist.parse(plistText);
-                }
-                
-                console.log('[SERVER /convert] Text plist parsing successful from ZIP');
-              } catch (textError) {
-                console.log('[SERVER /convert] Text plist also failed:', textError.message);
-                throw new Error(`Unable to parse extracted file as plist: ${textError.message}`);
-              }
-            }
-            
-            console.log('[SERVER /convert] Parsed plist structure from ZIP:', JSON.stringify(parsedPlist, null, 2));
-            
-            // Return full unfiltered data from ZIP
-            const fullYamlOutput = yaml.dump(parsedPlist, {
-              indent: 2,
-              lineWidth: 120,
-              noRefs: true,
-            });
-            
-            // Also create filtered version for comparison
-            const mappedData = mapMobileConfigToYaml(parsedPlist);
-            const filteredYamlOutput = yaml.dump(mappedData, {
-              indent: 2,
-              lineWidth: 120,
-              noRefs: true,
-            });
-            
-            return res.json({
-              success: true,
-              yamlOutput: fullYamlOutput,              // PRIMARY: Full unfiltered data (frontend expects yamlOutput)
-              comprehensiveYaml: fullYamlOutput,       // ALSO: Same data for comprehensive tab
-              filteredYaml: filteredYamlOutput,        // SECONDARY: Filtered version
-              jsonOutput: JSON.stringify(parsedPlist, null, 2), // JSON format for JSON tab
-              originalData: parsedPlist,
-              sourceFile: plistEntry.entryName,
-              fileType: 'plist-in-zip',
-              mappingInfo: {
-                filtered: false,
-                note: "Full unfiltered data extracted from ZIP is provided in the 'yamlOutput' field"
-              }
-            });
-            
-          } catch (zipError) {
-            console.log('[SERVER /convert] ZIP processing failed:', zipError.message);
-            return res.status(400).json({ 
-              error: `Failed to process ZIP file: ${zipError.message}. This may not contain valid plist/configuration data.` 
-            });
-          }
         }
         
         // Convert buffer to string and clean it
@@ -2009,7 +1809,7 @@ router.post('/convert', async (req, res) => {
         const trimmedXml = xmlString.trim();
         if (!trimmedXml.includes('<') || trimmedXml.length === 0) {
           return res.status(400).json({ 
-            error: 'File does not appear to contain valid XML content. Please ensure you have uploaded a proper XML, plist, or ZIP file containing configuration data.' 
+            error: 'File does not appear to contain valid XML content. Please ensure you have uploaded a proper XML or plist file containing configuration data.' 
           });
         }
         

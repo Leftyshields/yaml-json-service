@@ -6,7 +6,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 
 ### Profile Converter
 - **Multi-format Support**: Convert .mobileconfig, .xml, .eap-config, .yml/.yaml, .json, .txt/.conf/.cfg files
-- **Smart Parsing**: Automatic detection and parsing of configuration formats including ZIP archives
+- **Smart Parsing**: Automatic detection and parsing of configuration formats
 - **Certificate Handling**: Advanced certificate detection and display options:
   - **Preserve**: Show original certificate data
   - **Obfuscate**: Replace with `[CERTIFICATE DATA REDACTED]`
@@ -32,7 +32,7 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 ### Technical Features
 - **Certificate Processing**: Backend certificate detection and transformation with metadata extraction
 - **Automatic Cleanup**: Uploaded files are automatically cleaned up after processing
-- **Multi-format Input**: Support for 15+ file formats including binary and ZIP archives
+- **Multi-format Input**: Support for 15+ file formats including binary files
 - **Security**: Non-root Docker containers, input sanitization, certificate data protection
 - **Performance**: Multi-stage Docker builds, optimized frontend, efficient file processing
 - **Monitoring**: Health checks, comprehensive logging, and WebSocket progress updates
