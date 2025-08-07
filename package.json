@@ -26,7 +26,6 @@
     "@emotion/styled": "^11.14.0",
     "@fastify/busboy": "^3.1.1",
     "@mui/material": "^7.0.2",
-
     "ajv": "^8.17.1",
     "axios": "^1.9.0",
     "busboy": "^1.6.0",
@@ -37,6 +36,7 @@
     "js-yaml": "^4.1.0",
     "multer": "^2.0.0",
     "plist": "^3.1.0",
+    "prom-client": "^15.1.0",
     "uuid": "^9.0.1",
     "ws": "^8.18.3",
     "xml2js": "^0.6.2"

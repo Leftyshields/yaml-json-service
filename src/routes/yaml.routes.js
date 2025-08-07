@@ -14,6 +14,14 @@ const { mapToYamlSchema } = require('../services/mapping.service'); // Import th
 const certService = require('../services/cert.service'); // Import the certificate service
 const { v4: uuidv4 } = require('uuid');
 const { sendConversionUpdate } = require('../services/websocket.service'); // Import WebSocket service
+const { 
+  trackFileUpload, 
+  trackFileConversion, 
+  trackConversionDuration, 
+  trackError, 
+  trackCertificateProcessing, 
+  trackPasswordObfuscation 
+} = require('../services/metrics.service'); // Import metrics service
 
 const crypto = require('crypto');
 const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
@@ -810,19 +818,26 @@ router.post('/upload-and-convert', (req, res) => {
   memoryUpload(req, res, async (err) => {
     if (err) {
       console.error('[SERVER /upload-and-convert] Multer error:', err);
+      trackError('upload_error', '/upload-and-convert');
       return res.status(400).json({ error: 'Upload failed: ' + err.message });
     }
 
     if (!req.file) {
+      trackError('no_file_uploaded', '/upload-and-convert');
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const startTime = Date.now();
+    const fileExtension = path.extname(req.file.originalname).toLowerCase();
+    
     try {
       console.log('[SERVER /upload-and-convert] Processing file:', req.file.originalname);
       
+      // Track file upload
+      trackFileUpload(fileExtension, 'success');
+      
       // Process directly from memory buffer - NO FILE SYSTEM INTERACTION
       const fileContent = req.file.buffer.toString('utf8');
-      const fileExtension = path.extname(req.file.originalname).toLowerCase();
       
       // Get conversion parameters from request body (parsed from multipart)
       const obfuscationLevel = req.body.obfuscationLevel || 'none';
@@ -837,9 +852,11 @@ router.post('/upload-and-convert', (req, res) => {
       // Detect file type and convert directly from memory
       let convertedData;
       let originalData;
+      let conversionType = 'unknown';
       
       if (fileExtension === '.eap-config' || fileContent.includes('<EapHostConfig') || fileContent.includes('<EAPIdentityProviderList') || fileExtension === '.xml') {
         console.log('[SERVER /upload-and-convert] Processing EAP config file');
+        conversionType = 'eap-config';
         
         // Parse EAP config directly from buffer
         const result = await processEapConfigFromBuffer(fileContent, obfuscationLevel, certHandling);
@@ -848,6 +865,7 @@ router.post('/upload-and-convert', (req, res) => {
         
       } else if (fileExtension === '.mobileconfig' || (fileContent.includes('<?xml') && fileContent.includes('<plist'))) {
         console.log('[SERVER /upload-and-convert] Processing mobileconfig/plist file');
+        conversionType = 'mobileconfig';
         
         // Parse plist directly from buffer
         const result = await processPlistFromBuffer(fileContent, obfuscationLevel, certHandling);
@@ -856,6 +874,7 @@ router.post('/upload-and-convert', (req, res) => {
         
       } else if (fileExtension === '.yaml' || fileExtension === '.yml') {
         console.log('[SERVER /upload-and-convert] Processing YAML file');
+        conversionType = 'yaml';
         
         // Parse YAML directly from buffer
         const result = await processYamlFromBuffer(fileContent, obfuscationLevel, certHandling);
@@ -863,7 +882,23 @@ router.post('/upload-and-convert', (req, res) => {
         originalData = fileContent;
         
       } else {
+        trackError('unsupported_file_type', '/upload-and-convert');
         throw new Error('Unsupported file type for atomic conversion');
+      }
+      
+      // Track conversion success and duration
+      const conversionDuration = (Date.now() - startTime) / 1000;
+      trackFileConversion(fileExtension, conversionType, 'success');
+      trackConversionDuration(fileExtension, conversionType, conversionDuration);
+      
+      // Track certificate processing if applicable
+      if (certHandling && certHandling !== 'preserve') {
+        trackCertificateProcessing(certHandling, 'success');
+      }
+      
+      // Track password obfuscation if applicable
+      if (obfuscationLevel && obfuscationLevel !== 'none') {
+        trackPasswordObfuscation(obfuscationLevel, 'success');
       }
       
       console.log('[SERVER /upload-and-convert] Conversion completed successfully');
@@ -885,6 +920,13 @@ router.post('/upload-and-convert', (req, res) => {
       
     } catch (error) {
       console.error('[SERVER /upload-and-convert] Conversion error:', error);
+      
+      // Track conversion error and duration
+      const conversionDuration = (Date.now() - startTime) / 1000;
+      trackFileConversion(fileExtension, 'unknown', 'error');
+      trackConversionDuration(fileExtension, 'unknown', conversionDuration);
+      trackError('conversion_error', '/upload-and-convert');
+      
       return res.status(500).json({ 
         error: 'Conversion failed: ' + error.message,
         originalFilename: req.file?.originalname

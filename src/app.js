@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const websocketService = require('./services/websocket.service');
+const { metricsMiddleware, getMetrics, register } = require('./services/metrics.service');
 
 // Load environment variables
 dotenv.config();
@@ -18,47 +19,8 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the React frontend app built with Vite
-// For Digital Ocean deployment, these files are copied to ./public by the Dockerfile
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
-// Fallback for SPA routing - this allows React Router to handle routes
-app.use((req, res, next) => {
-  // Skip API routes and direct file requests
-  if (req.path.startsWith('/api') || 
-      req.path === '/health' || 
-      req.path.includes('.')) {
-    return next();
-  }
-  
-  // For all other routes, serve the index.html
-  const indexPath = path.join(__dirname, '..', 'public', 'index.html');
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
-  }
-  next();
-});
-
-// Serve static files from the React frontend app built with Vite
-// For Digital Ocean deployment, these files are copied to ./public by the Dockerfile
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
-// Fallback for SPA routing - this allows React Router to handle routes
-app.use((req, res, next) => {
-  // Skip API routes and direct file requests
-  if (req.path.startsWith('/api') || 
-      req.path === '/health' || 
-      req.path.includes('.')) {
-    return next();
-  }
-  
-  // For all other routes, serve the index.html
-  const indexPath = path.join(__dirname, '..', 'public', 'index.html');
-  if (fs.existsSync(indexPath)) {
-    return res.sendFile(indexPath);
-  }
-  next();
-});
+// Add Prometheus metrics middleware
+app.use(metricsMiddleware);
 
 // Health check endpoint for Docker and monitoring
 app.get('/health', (req, res) => {
@@ -75,6 +37,39 @@ app.get('/health', (req, res) => {
       uploadDir: process.env.FUNCTION_TARGET ? '/tmp' : 'config/uploads'
     }
   });
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await getMetrics();
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.end(metrics);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to collect metrics' });
+  }
+});
+
+// Serve static files from the React frontend app built with Vite
+// For Digital Ocean deployment, these files are copied to ./public by the Dockerfile
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Fallback for SPA routing - this allows React Router to handle routes
+app.use((req, res, next) => {
+  // Skip API routes and direct file requests
+  if (req.path.startsWith('/api') || 
+      req.path === '/health' || 
+      req.path === '/metrics' ||
+      req.path.includes('.')) {
+    return next();
+  }
+  
+  // For all other routes, serve the index.html
+  const indexPath = path.join(__dirname, '..', 'public', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  next();
 });
 
 // Configure multer for memory storage
