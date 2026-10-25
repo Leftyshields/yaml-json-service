@@ -34,7 +34,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "js-yaml": "^4.1.0",
-    "multer": "^2.0.0",
+    "multer": "^2.5.0",
     "plist": "^3.1.0",
     "prom-client": "^15.1.0",
     "uuid": "^9.0.1",
