@@ -6,6 +6,8 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const certService = require('./services/cert.service');
 const websocketService = require('./services/websocket.service');
 const { metricsMiddleware, getMetrics, register } = require('./services/metrics.service');
 
@@ -394,16 +396,21 @@ app.get('/api/health', cors(corsOptions), (req, res) => {
 // Start server
 const PORT = process.env.PORT || 6001;
 
-// Create HTTP server
-const server = http.createServer(app);
+// Create HTTP or HTTPS server (TLS credentials are loaded/generated at runtime, never committed)
+const useHttps = process.env.ENABLE_HTTPS === 'true';
+const server = useHttps
+  ? https.createServer(certService.resolveTlsCredentials(), app)
+  : http.createServer(app);
 
 // Initialize WebSocket service
 websocketService.initWebSocket(server);
 
 // Start server
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`WebSocket server available at ws://0.0.0.0:${PORT}/api/ws`);
+  const scheme = useHttps ? 'https' : 'http';
+  const wsScheme = useHttps ? 'wss' : 'ws';
+  console.log(`Server running on ${scheme}://0.0.0.0:${PORT}`);
+  console.log(`WebSocket server available at ${wsScheme}://0.0.0.0:${PORT}/api/ws`);
   console.log('[SERVER] Automatic file cleanup scheduled to run every hour');
 });
 

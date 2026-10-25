@@ -3,7 +3,13 @@
  * Provides utilities for certificate detection, obfuscation, and transformation
  */
 const crypto = require('crypto');
-const fs = require('fs').promises;
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const PEM_BEGIN_PATTERN = /-----BEGIN [A-Z0-9 ]+-----/;
+
+let cachedTlsCredentials = null;
 
 class CertificateService {
   /**
@@ -14,18 +20,8 @@ class CertificateService {
   isCertificateData(value) {
     if (typeof value !== 'string') return false;
     
-    // Common certificate markers
-    const certMarkers = [
-      '-----BEGIN CERTIFICATE-----',
-      '-----BEGIN PRIVATE KEY-----',
-      '-----BEGIN RSA PRIVATE KEY-----',
-      '-----BEGIN PUBLIC KEY-----',
-      '-----BEGIN X509 CERTIFICATE-----',
-      '-----BEGIN TRUSTED CERTIFICATE-----'
-    ];
-    
-    // Check for PEM format first
-    if (certMarkers.some(marker => value.includes(marker))) {
+    // Check for PEM format first (certificates, keys, and related PEM blocks)
+    if (PEM_BEGIN_PATTERN.test(value)) {
       return true;
     }
     
@@ -226,6 +222,88 @@ class CertificateService {
     }
     
     return result;
+  }
+
+  /**
+   * Load or create TLS credentials for optional HTTPS serving.
+   * Uses TLS_CERT_PATH/TLS_KEY_PATH when set, otherwise runtime files under TLS_CERT_DIR (default: certs/).
+   * @param {{ certDir?: string }} [options]
+   * @returns {{ cert: string, key: string, source: 'env' | 'runtime-files' | 'generated' }}
+   */
+  resolveTlsCredentials(options = {}) {
+    const certDir =
+      options.certDir ||
+      process.env.TLS_CERT_DIR ||
+      path.join(__dirname, '..', '..', 'certs');
+
+    if (!options.certDir && cachedTlsCredentials) {
+      return cachedTlsCredentials;
+    }
+
+    const envCertPath = process.env.TLS_CERT_PATH;
+    const envKeyPath = process.env.TLS_KEY_PATH;
+    if (envCertPath && envKeyPath) {
+      const credentials = {
+        cert: fs.readFileSync(envCertPath, 'utf8'),
+        key: fs.readFileSync(envKeyPath, 'utf8'),
+        source: 'env',
+      };
+      if (!options.certDir) {
+        cachedTlsCredentials = credentials;
+      }
+      return credentials;
+    }
+
+    const defaultCertPath = path.join(certDir, 'cert.pem');
+    const defaultKeyPath = path.join(certDir, 'key.pem');
+
+    if (fs.existsSync(defaultCertPath) && fs.existsSync(defaultKeyPath)) {
+      const credentials = {
+        cert: fs.readFileSync(defaultCertPath, 'utf8'),
+        key: fs.readFileSync(defaultKeyPath, 'utf8'),
+        source: 'runtime-files',
+      };
+      if (!options.certDir) {
+        cachedTlsCredentials = credentials;
+      }
+      return credentials;
+    }
+
+    fs.mkdirSync(certDir, { recursive: true, mode: 0o700 });
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-keyout',
+        defaultKeyPath,
+        '-out',
+        defaultCertPath,
+        '-days',
+        '365',
+        '-nodes',
+        '-subj',
+        '/CN=localhost',
+      ],
+      { stdio: 'ignore' }
+    );
+    fs.chmodSync(defaultKeyPath, 0o600);
+
+    const credentials = {
+      cert: fs.readFileSync(defaultCertPath, 'utf8'),
+      key: fs.readFileSync(defaultKeyPath, 'utf8'),
+      source: 'generated',
+    };
+    if (!options.certDir) {
+      cachedTlsCredentials = credentials;
+    }
+    return credentials;
+  }
+
+  clearTlsCredentialsCache() {
+    cachedTlsCredentials = null;
   }
 }
 

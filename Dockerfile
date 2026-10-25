@@ -24,6 +24,9 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS production
 
+# OpenSSL is required for runtime TLS credential generation (optional HTTPS)
+RUN apk add --no-cache openssl
+
 # Create app directory
 WORKDIR /app
 

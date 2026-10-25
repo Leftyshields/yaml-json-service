@@ -95,6 +95,16 @@ docker-compose down
 
 ## 🚢 Deployment
 
+### TLS / HTTPS (production)
+
+In production, do not rely on auto-generated self-signed credentials. Mount real TLS material and point the app at it:
+
+- `TLS_CERT_PATH` — path to the server certificate (PEM)
+- `TLS_KEY_PATH` — path to the private key (PEM)
+- `ENABLE_HTTPS=true` — serve HTTPS instead of plain HTTP
+
+Optional: `TLS_CERT_DIR` overrides the default runtime directory (`certs/`) used only when env paths are not set (local/dev self-signed fallback).
+
 ### GitHub Actions Deployment (Recommended)
 
 This repository includes automated GitHub Actions deployment to Digital Ocean.
