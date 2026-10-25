@@ -269,7 +269,7 @@ class CertificateService {
       return credentials;
     }
 
-    fs.mkdirSync(certDir, { recursive: true });
+    fs.mkdirSync(certDir, { recursive: true, mode: 0o700 });
     execFileSync(
       'openssl',
       [
@@ -289,6 +289,7 @@ class CertificateService {
       ],
       { stdio: 'ignore' }
     );
+    fs.chmodSync(defaultKeyPath, 0o600);
 
     const credentials = {
       cert: fs.readFileSync(defaultCertPath, 'utf8'),
