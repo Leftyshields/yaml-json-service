@@ -23,22 +23,22 @@
   "description": "",
   "dependencies": {
     "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@fastify/busboy": "^3.1.1",
+    "@emotion/styled": "^11.14.1",
+    "@fastify/busboy": "^3.2.4",
     "@mui/material": "^7.0.2",
-    "ajv": "^8.17.1",
-    "axios": "^1.9.0",
+    "ajv": "^8.20.0",
+    "axios": "^1.20.0",
     "busboy": "^1.6.0",
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.0.1",
+    "express-rate-limit": "^8.7.1",
     "js-yaml": "^4.1.0",
     "multer": "^2.5.0",
     "plist": "^3.1.0",
     "prom-client": "^15.1.0",
     "uuid": "^9.0.1",
-    "ws": "^8.18.3",
+    "ws": "^8.22.0",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
@@ -52,7 +52,7 @@
     "eslint-plugin-markdown": "^5.1.0",
     "eslint-plugin-react": "^7.37.5",
     "globals": "^16.1.0",
-    "nodemon": "^3.1.10",
+    "nodemon": "^3.1.14",
     "stylelint": "^16.19.1",
     "vite": "^6.3.5"
   }
