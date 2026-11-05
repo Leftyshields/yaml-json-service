@@ -38,10 +38,11 @@ A comprehensive web application for editing Passpoint WiFi configurations and co
 - **Monitoring**: Health checks, comprehensive logging, and WebSocket progress updates
 - **HTTP Compatibility**: Clipboard functionality works on both HTTP and HTTPS with graceful fallbacks
 
-## 🔧 Live Demo
+## 🔧 Local access
 
-The application is deployed on Digital Ocean and available at:
-- https://wba-app-ougq3.ondigitalocean.app/
+When running locally (see Development Setup below):
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:6001
 
 ## 🛠️ Development Setup
 
@@ -124,7 +125,7 @@ This repository includes automated GitHub Actions deployment to Digital Ocean.
 3. **Deploy**
    - Push changes to the `main` branch
    - GitHub Actions will automatically build and deploy to your droplet
-   - The application is available at `https://wba-app-ougq3.ondigitalocean.app/`
+   - The application is available at your droplet’s URL (e.g. `http://localhost:6001` when testing locally)
 
 ### Manual Deployment
 
