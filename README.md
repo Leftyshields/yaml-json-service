@@ -106,39 +106,40 @@ In production, do not rely on auto-generated self-signed credentials. Mount real
 
 Optional: `TLS_CERT_DIR` overrides the default runtime directory (`certs/`) used only when env paths are not set (local/dev self-signed fallback).
 
-### GitHub Actions Deployment (Recommended)
+### Self-hosted Docker
 
-This repository includes automated GitHub Actions deployment to Digital Ocean.
+There is no hosted demo and no GitHub Actions workflow in this repository that deploys to a cloud VM. Run the app on your own infrastructure using the included `Dockerfile` and `docker-compose.yml`.
 
-1. **Create a Digital Ocean Droplet**
-   - Create a new Ubuntu droplet on Digital Ocean
-   - Note the droplet's IP address
-
-2. **Set up GitHub Secrets**
-   Go to your GitHub repository Settings > Secrets > Actions and add:
-   - `DOCKER_USERNAME`: Your Docker Hub username
-   - `DOCKER_PASSWORD`: Your Docker Hub password
-   - `DROPLET_IP`: Your Digital Ocean droplet IP address
-   - `SSH_USER`: SSH username (usually 'root')
-   - `SSH_PRIVATE_KEY`: Your private SSH key for the droplet
-
-3. **Deploy**
-   - Push changes to the `main` branch
-   - GitHub Actions will automatically build and deploy to your droplet
-   - The application is available at your droplet’s URL (e.g. `http://localhost:6001` when testing locally)
-
-### Manual Deployment
-
-If you prefer manual deployment:
+**Build and run locally with Compose (production compose file):**
 
 ```bash
-# Build and push Docker image
-docker build -t your-username/yaml-json-service .
-docker push your-username/yaml-json-service
-
-# Deploy to your server
-ssh root@your-droplet-ip "docker pull your-username/yaml-json-service && docker stop yaml-json-service || true && docker rm yaml-json-service || true && docker run -d --name yaml-json-service -p 80:6001 --restart unless-stopped your-username/yaml-json-service"
+docker-compose up --build -d
 ```
+
+By default the service listens on container port `6001` and is published on host port `80` (see `docker-compose.yml`). Adjust ports and environment variables as needed.
+
+**Build, push, and run on a remote host:**
+
+```bash
+# Build and tag
+docker build -t your-registry/yaml-json-service .
+
+# Push to your registry (optional)
+docker push your-registry/yaml-json-service
+
+# On the server: pull and run (example)
+docker pull your-registry/yaml-json-service
+docker stop yaml-json-service 2>/dev/null || true
+docker rm yaml-json-service 2>/dev/null || true
+docker run -d \
+  --name yaml-json-service \
+  -p 80:6001 \
+  --restart unless-stopped \
+  -e NODE_ENV=production \
+  your-registry/yaml-json-service
+```
+
+Set `TLS_CERT_PATH`, `TLS_KEY_PATH`, and `ENABLE_HTTPS=true` when serving HTTPS in production (see above). For day-to-day development, use the local URLs in **Local access** (`http://localhost:5173` frontend, `http://localhost:6001` backend).
 
 ## 🛡️ Security Considerations
 
@@ -151,42 +152,38 @@ ssh root@your-droplet-ip "docker pull your-username/yaml-json-service && docker 
 
 ## 📝 Troubleshooting
 
-If you encounter issues with the deployment:
+### Local development
 
-1. **Check Docker Container Logs**
+- **Frontend not loading**: Confirm the Vite dev server is running (`cd public && npm run dev`) and open http://localhost:5173.
+- **API errors**: Confirm the backend is running (`npm run dev`) and reachable at http://localhost:6001/health.
+- **Port conflicts**: Change the dev server or `PORT` in `.env` if 5173 or 6001 is already in use.
+
+### Docker / self-hosted
+
+1. **Check container logs**
    ```bash
    docker logs yaml-json-service
+   # or
+   docker-compose logs -f yaml-json-service
    ```
 
-2. **Verify the Application Health**
+2. **Verify health** (Compose with default port mapping)
    ```bash
    curl http://localhost/health
+   # or, when using dev split stack:
+   curl http://localhost:6001/health
    ```
 
-3. **Restart the Container**
+3. **Restart**
    ```bash
    docker-compose restart yaml-json-service
    ```
 
-4. **Digital Ocean Specific Issues**
-   - Ensure firewall is configured to allow port 80:
-     ```bash
-     ufw allow http
-     ```
-   - Check if Docker is running:
-     ```bash
-     systemctl status docker
-     ```
-   - Verify GitHub Actions secrets are correctly configured
-   - Check SSH connection from GitHub Actions
-
-5. **Common Deployment Errors**
-   - `Permission denied (publickey)`: SSH key is not correctly configured
-   - `No such file or directory`: Path issues on the droplet
-   - `Error pulling image`: Docker Hub credentials incorrect
-   - `Connection refused`: Firewall blocking traffic
+4. **Common issues**
+   - `Connection refused`: Confirm the container is running and the host port mapping matches your curl URL.
+   - `Error pulling image`: Registry credentials or image name/tag may be wrong.
+   - TLS errors in production: Ensure `TLS_CERT_PATH` and `TLS_KEY_PATH` point to valid PEM files and `ENABLE_HTTPS=true` is set.
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-# Trigger deployment Wed Aug  6 07:06:01 PM PDT 2025
