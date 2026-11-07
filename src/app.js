@@ -315,8 +315,6 @@ const corsOptions = {
   origin: [
     'http://localhost:5173', 
     'http://localhost:6001',
-    'http://passpoint.ddns.net',
-    'https://passpoint.ddns.net'
   ],
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Upload-Client', 'X-File-Size', 'X-File-Name', 'X-File-Type']
