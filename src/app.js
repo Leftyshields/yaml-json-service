@@ -315,8 +315,6 @@ const corsOptions = {
   origin: [
     'http://localhost:5173', 
     'http://localhost:6001',
-    'http://passpoint.ddns.net',
-    'https://passpoint.ddns.net',
     'http://wba-app-ougp3.ondigitalocean.app',
     'https://*.ondigitalocean.app'
   ],
