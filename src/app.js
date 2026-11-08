@@ -235,16 +235,12 @@ function addAlertsToResponse(response, alerts) {
 }
 
 // UPLOAD ROUTE: Uses Multer for reliable file handling in serverless environments
+// Registered before app.use('/api', cors(...)) so this is the live POST /api/upload path.
 app.post('/api/upload', upload.single('yamlFile'), (req, res) => {
-  // Set CORS headers for the response
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Upload-Client, X-File-Size, X-File-Name, X-File-Type');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(204).send('');
-  }
+  yamlRoutes.setUploadCorsHeaders(req, res, {
+    allowedHeaders:
+      'Content-Type, Authorization, X-Requested-With, Accept, X-Upload-Client, X-File-Size, X-File-Name, X-File-Type',
+  });
 
   console.log('[UPLOAD] Request received with headers:', JSON.stringify(req.headers));
 

@@ -32,12 +32,16 @@ const ALLOWED_CORS_ORIGINS = new Set([
   'http://localhost:6001',
 ]);
 
-function setUploadCorsHeaders(req, res) {
+function setUploadCorsHeaders(req, res, { allowedHeaders } = {}) {
   const origin = req.headers.origin;
   if (origin && ALLOWED_CORS_ORIGINS.has(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.header(
+      'Access-Control-Allow-Headers',
+      allowedHeaders ||
+        'Content-Type, Authorization, X-Requested-With, Accept'
+    );
   }
 }
 
@@ -2809,3 +2813,4 @@ function createComprehensiveYaml(parsedPlist) {
 }
 
 module.exports = router;
+module.exports.setUploadCorsHeaders = setUploadCorsHeaders;
