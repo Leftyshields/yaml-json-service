@@ -27,6 +27,20 @@ const crypto = require('crypto');
 const Busboy = require('@fastify/busboy'); // Use Fastify busboy for better serverless support
 const { bufferJsonReplacer, processBinaryData } = require('../utils/binary-helpers'); // Import binary data helpers
 
+const ALLOWED_CORS_ORIGINS = new Set([
+  'http://localhost:5173',
+  'http://localhost:6001',
+]);
+
+function setUploadCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_CORS_ORIGINS.has(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  }
+}
+
 /**
  * Alert system for detecting malformed files and unsupported file types
  */
@@ -697,11 +711,8 @@ const upload = multer({
 
 // Test endpoint to validate upload functionality
 router.post('/test-upload', (req, res) => {
-  // Set CORS headers
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-  
+  setUploadCorsHeaders(req, res);
+
   console.log('[SERVER /test-upload] Test upload request received');
   console.log('[SERVER /test-upload] Content-Type:', req.headers['content-type']);
   console.log('[SERVER /test-upload] Content-Length:', req.headers['content-length']);
@@ -798,11 +809,8 @@ router.post('/test-upload', (req, res) => {
 
 // NEW ARCHITECTURE: Atomic upload + convert (eliminates race condition entirely)
 router.post('/upload-and-convert', (req, res) => {
-  // Set CORS headers
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-  
+  setUploadCorsHeaders(req, res);
+
   console.log('[SERVER /upload-and-convert] Atomic conversion request received');
 
   const memoryUpload = multer({ 
@@ -964,27 +972,20 @@ router.get('/upload-health', (req, res) => {
 
 // Handle preflight OPTIONS request for test upload
 router.options('/test-upload', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  setUploadCorsHeaders(req, res);
   res.status(200).send();
 });
 
 // Handle preflight OPTIONS request for upload
 router.options('/upload', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  setUploadCorsHeaders(req, res);
   res.status(200).send();
 });
 
 // Alternative upload route for Local compatibility
 router.post('/upload', (req, res) => {
-  // Set CORS headers specifically for upload
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-  
+  setUploadCorsHeaders(req, res);
+
   console.log('[SERVER /upload] Upload request received');
   console.log('[SERVER /upload] Content-Type:', req.headers['content-type']);
   console.log('[SERVER /upload] Content-Length:', req.headers['content-length']);
