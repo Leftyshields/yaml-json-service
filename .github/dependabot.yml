@@ -4,27 +4,43 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 3
     groups:
-      npm-minor-patch:
+      npm-root:
         patterns:
           - "*"
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: npm
     directory: "/public"
     schedule:
       interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 3
     groups:
-      npm-minor-patch:
+      npm-public:
         patterns:
           - "*"
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
